@@ -132,7 +132,12 @@ Canton makes it *cheap and native*, not that it is the only place it is *conceiv
 ledger/
   dars/           real CIP-56 interface DARs (Apache-2.0, Digital Asset), vendored
   ballast/        the product package — NO token template, NO daml-script
-  ballast-test/   the test registry + privacy proofs — never deployed
+    Valuation     reads holdings through the CIP-56 interface; aggregates per instrument
+    Vault         the VaultIndex — the fund's holdings, enumerated on the ledger
+    Oracle        signed, freshness-checked price sets
+    Fund          NAV published from the index at oracle prices
+    Mandate       the private strategy, and the policy that enforces it
+  ballast-test/   the test registry + proofs — never deployed
 ```
 
 The split is deliberate. Ballast defines no asset of its own, and the packaging enforces it: the
@@ -157,19 +162,31 @@ not on the DevNet where real cBTC and cETH exist. Targeting v2 would mean holdin
 cd ledger && daml build --all && cd ballast-test && daml test
 ```
 
-Proven so far, on **real CIP-56 `Holding` interface contracts**:
+Proven so far, on **real CIP-56 `Holding` interface contracts**, in 8 scripts:
 
-- **`spikeFourLenses`** — a NAV computed from holdings is disclosed to investors who cannot see
-  those holdings; the market sees nothing; and the two instrument registries each see only their
-  own leg, so no single registry can reconstruct the portfolio. The registry lens is shown
-  honestly rather than hidden.
-- **`spikeNavGuards`** — the guards bite: a missing price, a non-positive price, the same holding
-  presented twice, and another vault's holding each fail the NAV publication.
+- **`fourLenses`** — a NAV computed from holdings is disclosed to investors who cannot see
+  those holdings; the market sees nothing; the two instrument registries each see only their
+  own leg; and the price oracle values the fund without learning anything about it.
+- **`navRefusesBadInputs`** — eight ways to bias a NAV, all refused: a price set that omits an
+  instrument, a non-positive price, a stale one, a post-dated one, one from an oracle the fund
+  never appointed, an index that double-counts, an index listing another vault's assets, and
+  an index belonging to another fund.
+- **`policyAdmitsACompliantRebalance`** and five refusal scripts — the mandate admits a
+  rebalance that obeys it and refuses nine ways to deviate, including trading before the drift
+  band is breached, under-trading, trades that are not self-financing, execution prices away
+  from the oracle, and rebalancing inside the cadence floor. The compliance proof cannot be
+  forged, and the mandate cannot be rewritten by the manager alone.
 
-Deliberately *not* claimed: that the published holdings are the fund's *complete* portfolio, or
-that the prices are honest. Both are manager-supplied inputs today. Closing them needs a
-ledger-maintained vault index and a signed price oracle, and the code says so where it matters.
+### What is deliberately still not claimed
 
-Not built yet: the mandate and policy contract, drift detection, subscribe/redeem, the rebalance
-itself, and the keeper. The policy contract is next — it is the half of the pitch that turns a
-private fund into a trustworthy one.
+- **The oracle is trusted.** Ballast does not claim otherwise. What it claims is narrower and
+  checkable: the manager cannot mark its own book, cannot pick which price set to value
+  against, and cannot pick the moment. That is where a real fund puts the trust too — in an
+  administrator rather than in the portfolio manager.
+- **Settlement is not built yet.** `ValidateRebalance` decides whether a rebalance is
+  admissible; it does not yet move the assets or update the index. Until CIP-56 allocation
+  settlement lands, the policy is proven and the plumbing is not.
+- **NAV still leaks the portfolio, slowly.** Nothing above changes the linear algebra. Breadth,
+  cadence and rounding remain the dials.
+
+Not built yet: subscribe and redeem, the rebalance settlement itself, and the keeper.

@@ -29,7 +29,10 @@ import DA.List (dedup)
 import DA.Time (RelTime, addRelTime)
 import Splice.Api.Token.HoldingV1
 
+import Ballast.Fund (Fund)
+import Ballast.Oracle
 import Ballast.Valuation
+import Ballast.Vault
 
 -- | One target weight in the basket. Fractions of NAV; the set sums to 1.
 data TargetWeight = TargetWeight
@@ -127,14 +130,25 @@ template Mandate
     -- logged. The manager proposes; this decides.
     nonconsuming choice ValidateRebalance : ContractId ComplianceRecord
       with
-        holdingCids   : [ContractId Holding]
-        oraclePrices  : [(InstrumentId, Decimal)]
+        fundCid       : ContractId Fund
+        vaultIndexCid : ContractId VaultIndex
+        priceSetCid   : ContractId PriceSet
         legs          : [Leg]
-        investors     : [Party]
         lastRebalance : Optional Time
       controller manager
       do
         now <- getTime
+
+        -- Everything the validation depends on is now read from contracts rather than
+        -- accepted as an argument. In particular `investors` comes from the Fund: a manager
+        -- who could name the audience could publish the compliance proof to an empty list
+        -- and satisfy the letter of the rule while nobody ever saw it.
+        fund <- fetch fundCid
+        assertMsg "fund does not match this mandate"
+          (fund.fundId == fundId && fund.manager == manager && fund.vault == vault)
+        let investors = fund.investors
+
+        oraclePrices <- freshPrices priceSetCid fund.oracle fund.maxPriceAge
 
         -- CADENCE. A fund that rebalances whenever it likes is a fund that can trade for
         -- reasons other than drift.
@@ -143,7 +157,7 @@ template Mandate
                        (now >= addRelTime t minRebalanceGap)
           None    -> pure ()
 
-        hvs <- vaultHoldings vault holdingCids
+        hvs <- portfolioOf vaultIndexCid vault fundId
         let pre = quantities hvs
         navPre <- navOf oraclePrices pre
         assertMsg "fund has no value to rebalance" (navPre > 0.0)

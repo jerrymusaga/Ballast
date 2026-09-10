@@ -1,0 +1,46 @@
+-- Ballast — the fund's holdings, enumerated on the ledger.
+--
+-- Daml cannot ask "what does party X own?". A choice can only look at contracts it is handed.
+-- So while `PublishNav` took a list of holdings from the manager, the manager could hand it a
+-- SUBSET — understating the fund, depressing NAV per unit, and issuing cheap units to itself.
+-- Every individual check passed; the set was the lie.
+--
+-- The VaultIndex closes that. It is the single enumeration of what the fund owns, and it is
+-- the only thing NAV and policy validation will read.
+--
+-- ┌─ WHY THE INDEX IS COMPLETE, rather than merely asserted ───────────────────────────────┐
+-- │ It is not trusted — it is inductively maintained:                                      │
+-- │   1. The manager cannot move fund assets outside a choice, because fund holdings are    │
+-- │      signed by (registry, vault) and the manager holds ReadAs on the vault, not         │
+-- │      CanActAs. See the security model in Ballast.Mandate.                               │
+-- │   2. Every choice that moves assets updates this index in the same transaction.         │
+-- │   3. Therefore no asset can enter or leave the fund without the index changing with it. │
+-- │ Completeness follows from the party rule. If that rule is ever relaxed, this guarantee  │
+-- │ is the first thing to fall.                                                             │
+-- └───────────────────────────────────────────────────────────────────────────────────────┘
+module Ballast.Vault where
+
+import Splice.Api.Token.HoldingV1
+
+import Ballast.Valuation
+
+template VaultIndex
+  with
+    manager  : Party
+    vault    : Party
+    fundId   : Text
+    holdings : [ContractId Holding]
+  where
+    signatory manager, vault
+
+-- | The fund's whole portfolio, read through the index.
+--
+-- A stale entry — a holding archived out from under the index — makes `fetch` fail and the
+-- whole transaction abort. That is the correct direction to fail: a NAV computed from an
+-- index that no longer matches reality is worse than no NAV at all.
+portfolioOf : ContractId VaultIndex -> Party -> Text -> Update [HoldingView]
+portfolioOf idxCid vault fundId = do
+  idx <- fetch idxCid
+  assertMsg "vault index belongs to a different vault" (idx.vault == vault)
+  assertMsg "vault index belongs to a different fund" (idx.fundId == fundId)
+  vaultHoldings vault idx.holdings

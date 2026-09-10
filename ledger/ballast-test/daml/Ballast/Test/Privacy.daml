@@ -6,27 +6,30 @@
 -- only the nodes of a transaction it is a stakeholder in, so the investor witnesses the NAV
 -- being created without witnessing the holdings it was computed from.
 --
--- These scripts prove that on real CIP-56 `Holding` contracts, and state honestly what they
--- do NOT prove.
+-- These scripts prove that on real CIP-56 `Holding` contracts.
 module Ballast.Test.Privacy where
 
 import Daml.Script
 import DA.Assert ((===))
+import DA.Time (hours, minutes, addRelTime)
 import Splice.Api.Token.HoldingV1
 
 import Ballast.Fund
+import Ballast.Oracle
+import Ballast.Vault
 import Ballast.Testing.Registry (TestHolding(..))
 
 -- ─────────────────────────────────────────────────────────────────────────────
--- Proof: one fund, real CIP-56 assets, four different realities.
+-- Proof: one fund, real CIP-56 assets, five different realities.
 -- ─────────────────────────────────────────────────────────────────────────────
-spikeFourLenses : Script ()
-spikeFourLenses = script do
+fourLenses : Script ()
+fourLenses = script do
   manager     <- allocateParty "Manager"
   vault       <- allocateParty "BallastVault"
   alice       <- allocateParty "Alice"
   bob         <- allocateParty "Bob"
   market      <- allocateParty "Market"
+  oracle      <- allocateParty "PriceOracle"
   -- Two SEPARATE instrument registries — as on DevNet, where cBTC and cETH are administered
   -- by different parties. This is what makes the registry leak survivable.
   btcRegistry <- allocateParty "cBTC-Registry"
@@ -37,37 +40,35 @@ spikeFourLenses = script do
       cBTC      = InstrumentId with admin = btcRegistry, id = "cBTC"
       cETH      = InstrumentId with admin = ethRegistry, id = "cETH"
 
-  fund <- submit (actAs [manager, vault]) do createCmd Fund with manager, vault, fundId, investors
+  fund <- submit (actAs [manager, vault]) do createCmd Fund with manager, vault, fundId, oracle, maxPriceAge = hours 1, investors
 
   -- The portfolio: 12 cBTC + 300 cETH, issued by their registries to the fund's vault.
-  -- These are real `Holding` interface contracts.
   hBtcT <- submit (actAs [btcRegistry, vault]) do createCmd TestHolding with admin = btcRegistry, owner = vault, instrumentId = cBTC, amount = 12.0
   hEthT <- submit (actAs [ethRegistry, vault]) do createCmd TestHolding with admin = ethRegistry, owner = vault, instrumentId = cETH, amount = 300.0
-
   let hBtc = toInterfaceContractId @Holding hBtcT
       hEth = toInterfaceContractId @Holding hEthT
-      prices = [(cBTC, 64000.0), (cETH, 1850.0)]
 
-  -- Each investor's stake, visible only to them.
+  idx <- submit (actAs [manager, vault]) do createCmd VaultIndex with manager, vault, fundId, holdings = [hBtc, hEth]
+
+  now <- getTime
+  ps <- submit oracle do createCmd PriceSet with oracle, prices = [(cBTC, 64000.0), (cETH, 1850.0)], asOf = now, consumers = [manager, vault]
+
+  _ <- submit (actAs manager <> readAs vault) do exerciseCmd fund PublishNav with vaultIndexCid = idx, priceSetCid = ps
+
+  -- ── LENS 1 · Manager acting as the vault: sees the whole portfolio ──
+  vHoldings <- queryInterface @Holding vault
+  length vHoldings === 2
+
+  -- ── LENS 2 · Investor: own stake + NAV, but NOT the portfolio ──
   _ <- submit manager do createCmd Position with manager, investor = alice, fundId, units = 700.0
   _ <- submit manager do createCmd Position with manager, investor = bob, fundId, units = 300.0
 
-  -- actAs manager, readAs vault — see the note on PublishNav.
-  _ <- submit (actAs manager <> readAs vault) do exerciseCmd fund PublishNav with holdingCids = [hBtc, hEth], prices
-
-  -- ── LENS 1 · Manager acting as the vault: sees the whole portfolio ──
-  -- Note it is the VAULT that is the stakeholder on the assets. The manager party is not; it
-  -- reads them as the vault, which is exactly the right the fund operator holds in production.
-  vHoldings <- queryInterface @Holding vault
-  length vHoldings === 2
-  mPos <- query @Position manager
-  length mPos === 2
-
-  -- ── LENS 2 · Investor: own stake + NAV, but NOT the portfolio ──
   aHoldings <- queryInterface @Holding alice
   aPos      <- query @Position alice
   aNav      <- query @NavRecord alice
+  aIdx      <- query @VaultIndex alice
   length aHoldings === 0      -- THE CLAIM: the portfolio is invisible to investors
+  length aIdx === 0           -- ...including the enumeration of it
   length aPos === 1           -- ...but Alice sees her own stake
   length aNav === 1           -- ...and the NAV computed from what she cannot see
 
@@ -95,65 +96,103 @@ spikeFourLenses = script do
   length xFund === 0
 
   -- ── LENS 4 · The registries: each sees ITS OWN instrument, and nothing else ──
-  -- This is the honest limit from the README, made explicit rather than hidden. A CIP-56
-  -- registry co-signs the holdings it issues, so it necessarily sees them. What it does not
-  -- see is the rest of the basket, the fund, the investors, or the NAV — so no single
-  -- registry can reconstruct the portfolio, and none of them is the front-runner anyway.
+  -- The honest limit from the README, made explicit rather than hidden. A CIP-56 registry
+  -- co-signs the holdings it issues, so it necessarily sees them. What it does not see is the
+  -- rest of the basket, the fund, the investors, or the NAV — so no single registry can
+  -- reconstruct the portfolio, and none of them is the front-runner anyway.
   btcView <- queryInterface @Holding btcRegistry
   ethView <- queryInterface @Holding ethRegistry
-  length btcView === 1        -- the cBTC registry sees the cBTC leg...
-  length ethView === 1        -- ...and the cETH registry sees the cETH leg...
-  -- ...and neither sees the whole portfolio, the fund, or the NAV.
+  length btcView === 1
+  length ethView === 1
   btcFund <- query @Fund btcRegistry
   btcNav  <- query @NavRecord btcRegistry
-  btcPos  <- query @Position btcRegistry
   length btcFund === 0
   length btcNav === 0
-  length btcPos === 0
+
+  -- ── LENS 5 · The oracle: prices the fund without learning anything about it ──
+  -- Moving trust to a pricing source only helps if the pricing source is not itself a
+  -- window into the portfolio.
+  oHoldings <- queryInterface @Holding oracle
+  oFund     <- query @Fund oracle
+  oNav      <- query @NavRecord oracle
+  oIdx      <- query @VaultIndex oracle
+  length oHoldings === 0
+  length oFund === 0
+  length oNav === 0
+  length oIdx === 0
 
   pure ()
 
 -- ─────────────────────────────────────────────────────────────────────────────
--- The guards actually bite. Each of these was a real hole in the first draft.
+-- The inputs the manager used to be able to choose, and no longer can.
 -- ─────────────────────────────────────────────────────────────────────────────
-spikeNavGuards : Script ()
-spikeNavGuards = script do
+navRefusesBadInputs : Script ()
+navRefusesBadInputs = script do
   manager     <- allocateParty "Manager"
   vault       <- allocateParty "BallastVault"
   outsider    <- allocateParty "OtherFundVault"
   alice       <- allocateParty "Alice"
+  oracle      <- allocateParty "PriceOracle"
+  rogueOracle <- allocateParty "RogueOracle"
   btcRegistry <- allocateParty "cBTC-Registry"
+  ethRegistry <- allocateParty "cETH-Registry"
 
   let fundId = "BALLAST-01"
       cBTC   = InstrumentId with admin = btcRegistry, id = "cBTC"
+      cETH   = InstrumentId with admin = ethRegistry, id = "cETH"
 
-  fund  <- submit (actAs [manager, vault]) do createCmd Fund with manager, vault, fundId, investors = [alice]
+  fund  <- submit (actAs [manager, vault]) do createCmd Fund with manager, vault, fundId, oracle, maxPriceAge = hours 1, investors = [alice]
   hBtcT <- submit (actAs [btcRegistry, vault]) do createCmd TestHolding with admin = btcRegistry, owner = vault, instrumentId = cBTC, amount = 12.0
+  hEthT <- submit (actAs [ethRegistry, vault]) do createCmd TestHolding with admin = ethRegistry, owner = vault, instrumentId = cETH, amount = 300.0
   let hBtc = toInterfaceContractId @Holding hBtcT
+      hEth = toInterfaceContractId @Holding hEthT
 
-  -- 1. A missing price must fail, not silently value the leg at zero.
-  submitMustFail (actAs manager <> readAs vault) do exerciseCmd fund PublishNav with holdingCids = [hBtc], prices = []
+  now <- getTime
+  let allPrices = [(cBTC, 64000.0), (cETH, 1850.0)]
 
-  -- 2. A non-positive price must fail.
-  submitMustFail (actAs manager <> readAs vault) do exerciseCmd fund PublishNav with holdingCids = [hBtc], prices = [(cBTC, 0.0)]
+  goodIdx <- submit (actAs [manager, vault]) do createCmd VaultIndex with manager, vault, fundId, holdings = [hBtc, hEth]
+  goodPs  <- submit oracle do createCmd PriceSet with oracle, prices = allPrices, asOf = now, consumers = [manager, vault]
 
-  -- 3. The same holding presented twice must not be counted twice.
-  submitMustFail (actAs manager <> readAs vault) do exerciseCmd fund PublishNav with holdingCids = [hBtc, hBtc], prices = [(cBTC, 64000.0)]
+  -- 1. A price set that omits an instrument the fund holds. Valuing the missing leg at zero
+  --    would understate the fund, which is the most dangerous way for a NAV to be wrong.
+  thinPs <- submit oracle do createCmd PriceSet with oracle, prices = [(cBTC, 64000.0)], asOf = now, consumers = [manager, vault]
+  submitMustFail (actAs manager <> readAs vault) do exerciseCmd fund PublishNav with vaultIndexCid = goodIdx, priceSetCid = thinPs
 
-  -- 4. Another vault's holding must not be counted as this fund's.
-  --    Note honestly: here Canton's own authorization also blocks it, because this fund's
-  --    vault is not a stakeholder on the outsider's holding. The `hv.owner == vault` check is
-  --    the second line of defence — it is what holds if the contract were ever explicitly
-  --    disclosed to this participant.
+  -- 2. A non-positive price cannot even be created. The guard now lives at the oracle, where
+  --    a bad price is caught once rather than at every site that consumes one.
+  submitMustFail oracle do createCmd PriceSet with oracle, prices = [(cBTC, 0.0)], asOf = now, consumers = [manager, vault]
+
+  -- 3. A stale price set. Without this the manager picks the MOMENT rather than the number,
+  --    which is the same abuse wearing a different hat.
+  stalePs <- submit oracle do createCmd PriceSet with oracle, prices = allPrices, asOf = addRelTime now (hours (-2)), consumers = [manager, vault]
+  submitMustFail (actAs manager <> readAs vault) do exerciseCmd fund PublishNav with vaultIndexCid = goodIdx, priceSetCid = stalePs
+
+  -- 4. A price set from an oracle this fund never appointed.
+  roguePs <- submit rogueOracle do createCmd PriceSet with oracle = rogueOracle, prices = [(cBTC, 640000.0), (cETH, 18500.0)], asOf = now, consumers = [manager, vault]
+  submitMustFail (actAs manager <> readAs vault) do exerciseCmd fund PublishNav with vaultIndexCid = goodIdx, priceSetCid = roguePs
+
+  -- 5. A post-dated price set, marking the book against a future the oracle has not seen.
+  futurePs <- submit oracle do createCmd PriceSet with oracle, prices = allPrices, asOf = addRelTime now (minutes 30), consumers = [manager, vault]
+  submitMustFail (actAs manager <> readAs vault) do exerciseCmd fund PublishNav with vaultIndexCid = goodIdx, priceSetCid = futurePs
+
+  -- 6. An index that double-counts a holding.
+  dupIdx <- submit (actAs [manager, vault]) do createCmd VaultIndex with manager, vault, fundId, holdings = [hBtc, hBtc]
+  submitMustFail (actAs manager <> readAs vault) do exerciseCmd fund PublishNav with vaultIndexCid = dupIdx, priceSetCid = goodPs
+
+  -- 7. An index listing another vault's assets as this fund's.
   hOtherT <- submit (actAs [btcRegistry, outsider]) do createCmd TestHolding with admin = btcRegistry, owner = outsider, instrumentId = cBTC, amount = 999.0
-  let hOther = toInterfaceContractId @Holding hOtherT
-  submitMustFail (actAs manager <> readAs vault) do exerciseCmd fund PublishNav with holdingCids = [hOther], prices = [(cBTC, 64000.0)]
+  foreignIdx <- submit (actAs [manager, vault]) do createCmd VaultIndex with manager, vault, fundId, holdings = [toInterfaceContractId @Holding hOtherT]
+  submitMustFail (actAs manager <> readAs vault) do exerciseCmd fund PublishNav with vaultIndexCid = foreignIdx, priceSetCid = goodPs
 
-  -- The happy path still works.
-  _ <- submit (actAs manager <> readAs vault) do exerciseCmd fund PublishNav with holdingCids = [hBtc], prices = [(cBTC, 64000.0)]
+  -- 8. An index belonging to a different fund entirely.
+  otherIdx <- submit (actAs [manager, vault]) do createCmd VaultIndex with manager, vault, fundId = "BALLAST-02", holdings = [hBtc, hEth]
+  submitMustFail (actAs manager <> readAs vault) do exerciseCmd fund PublishNav with vaultIndexCid = otherIdx, priceSetCid = goodPs
+
+  -- The honest path still works, so none of the above failed for an unrelated reason.
+  _ <- submit (actAs manager <> readAs vault) do exerciseCmd fund PublishNav with vaultIndexCid = goodIdx, priceSetCid = goodPs
   navs <- query @NavRecord alice
   length navs === 1
   let [(_, nav)] = navs
-  nav.nav === 768000.0
+  nav.nav === 1323000.0
 
   pure ()

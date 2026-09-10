@@ -13,7 +13,10 @@ import DA.Assert ((===))
 import DA.Time (hours)
 import Splice.Api.Token.HoldingV1
 
+import Ballast.Fund (Fund(..))
 import Ballast.Mandate
+import Ballast.Oracle
+import Ballast.Vault
 import Ballast.Testing.Registry (TestHolding(..))
 
 data Fixture = Fixture
@@ -24,10 +27,11 @@ data Fixture = Fixture
     cBTC    : InstrumentId
     cETH    : InstrumentId
     cUSD    : InstrumentId
-    prices  : [(InstrumentId, Decimal)]
     mandate : ContractId Mandate
-    hBtc    : ContractId Holding
-    hEth    : ContractId Holding
+    fund    : ContractId Fund
+    index   : ContractId VaultIndex
+    priceSet: ContractId PriceSet
+    oracle  : Party
 
 -- Baseline: targets 60/40 cBTC/cETH, band 5pp.
 -- Portfolio 12 cBTC @ 60,000 + 180 cETH @ 2,000
@@ -42,6 +46,7 @@ setup maxWeight = do
   btcReg  <- allocateParty "cBTC-Registry"
   ethReg  <- allocateParty "cETH-Registry"
   usdReg  <- allocateParty "USDCx-Registry"
+  oracle  <- allocateParty "PriceOracle"
 
   let cBTC = InstrumentId with admin = btcReg, id = "cBTC"
       cETH = InstrumentId with admin = ethReg, id = "cETH"
@@ -54,11 +59,16 @@ setup maxWeight = do
 
   hBtcT <- submit (actAs [btcReg, vault]) do createCmd TestHolding with admin = btcReg, owner = vault, instrumentId = cBTC, amount = 12.0
   hEthT <- submit (actAs [ethReg, vault]) do createCmd TestHolding with admin = ethReg, owner = vault, instrumentId = cETH, amount = 180.0
+  let hBtc = toInterfaceContractId @Holding hBtcT
+      hEth = toInterfaceContractId @Holding hEthT
+
+  fund  <- submit (actAs [manager, vault]) do createCmd Fund with manager, vault, fundId = "BALLAST-01", oracle, maxPriceAge = hours 1, investors = [alice]
+  index <- submit (actAs [manager, vault]) do createCmd VaultIndex with manager, vault, fundId = "BALLAST-01", holdings = [hBtc, hEth]
+  now   <- getTime
+  priceSet <- submit oracle do createCmd PriceSet with oracle, prices, asOf = now, consumers = [manager, vault]
 
   pure Fixture with
-    manager, vault, alice, cBTC, cETH, cUSD, prices, mandate
-    hBtc = toInterfaceContractId @Holding hBtcT
-    hEth = toInterfaceContractId @Holding hEthT
+    manager, vault, alice, cBTC, cETH, cUSD, mandate, fund, index, priceSet, oracle
 
 -- The legs that actually restore 60/40.
 goodLegs : Fixture -> [Leg]
@@ -75,8 +85,8 @@ policyAdmitsACompliantRebalance = script do
 
   recCid <- submit (actAs f.manager <> readAs f.vault) do
     exerciseCmd f.mandate ValidateRebalance with
-      holdingCids = [f.hBtc, f.hEth], oraclePrices = f.prices
-      legs = goodLegs f, investors = [f.alice], lastRebalance = None
+      fundCid = f.fund, vaultIndexCid = f.index, priceSetCid = f.priceSet
+      legs = goodLegs f, lastRebalance = None
 
   -- The investor receives the proof.
   proofs <- query @ComplianceRecord f.alice
@@ -100,9 +110,8 @@ policyRefusesEveryDeviation : Script ()
 policyRefusesEveryDeviation = script do
   f <- setup 0.8
   let asManager = actAs f.manager <> readAs f.vault
-      holdings  = [f.hBtc, f.hEth]
       validate legs lastRebalance = exerciseCmd f.mandate ValidateRebalance with
-        holdingCids = holdings, oraclePrices = f.prices, legs, investors = [f.alice], lastRebalance
+        fundCid = f.fund, vaultIndexCid = f.index, priceSetCid = f.priceSet, legs, lastRebalance
 
   -- 1. Trading before the band is breached. An unconstrained manager would most like to skip
   --    this one: a fund that trades on a predictable schedule is a predictable fund.
@@ -161,6 +170,7 @@ policyRefusesChurn = script do
   alice   <- allocateParty "Alice"
   btcReg  <- allocateParty "cBTC-Registry"
   ethReg  <- allocateParty "cETH-Registry"
+  oracle  <- allocateParty "PriceOracle"
 
   let cBTC = InstrumentId with admin = btcReg, id = "cBTC"
       cETH = InstrumentId with admin = ethReg, id = "cETH"
@@ -174,13 +184,17 @@ policyRefusesChurn = script do
   hBtcT <- submit (actAs [btcReg, vault]) do createCmd TestHolding with admin = btcReg, owner = vault, instrumentId = cBTC, amount = 12.0
   hEthT <- submit (actAs [ethReg, vault]) do createCmd TestHolding with admin = ethReg, owner = vault, instrumentId = cETH, amount = 240.0
 
+  fund  <- submit (actAs [manager, vault]) do createCmd Fund with manager, vault, fundId = "BALLAST-01", oracle, maxPriceAge = hours 1, investors = [alice]
+  index <- submit (actAs [manager, vault]) do createCmd VaultIndex with manager, vault, fundId = "BALLAST-01", holdings = [toInterfaceContractId @Holding hBtcT, toInterfaceContractId @Holding hEthT]
+  now   <- getTime
+  ps    <- submit oracle do createCmd PriceSet with oracle, prices, asOf = now, consumers = [manager, vault]
+
   submitMustFail (actAs manager <> readAs vault) do
     exerciseCmd mandate ValidateRebalance with
-      holdingCids = [toInterfaceContractId @Holding hBtcT, toInterfaceContractId @Holding hEthT]
-      oraclePrices = prices
+      fundCid = fund, vaultIndexCid = index, priceSetCid = ps
       legs = [ Leg with instrument = cBTC, delta = -1.0, execPrice = 60000.0
              , Leg with instrument = cETH, delta = 30.0, execPrice = 2000.0 ]
-      investors = [alice], lastRebalance = None
+      lastRebalance = None
   pure ()
 
 -- ─────────────────────────────────────────────────────────────────────────────
@@ -193,8 +207,8 @@ policyEnforcesConcentrationCap = script do
   f <- setup 0.55
   submitMustFail (actAs f.manager <> readAs f.vault) do
     exerciseCmd f.mandate ValidateRebalance with
-      holdingCids = [f.hBtc, f.hEth], oraclePrices = f.prices
-      legs = goodLegs f, investors = [f.alice], lastRebalance = None
+      fundCid = f.fund, vaultIndexCid = f.index, priceSetCid = f.priceSet
+      legs = goodLegs f, lastRebalance = None
   pure ()
 
 -- ─────────────────────────────────────────────────────────────────────────────
@@ -206,10 +220,10 @@ mandateIsInvisibleToInvestors = script do
 
   _ <- submit (actAs f.manager <> readAs f.vault) do
     exerciseCmd f.mandate ValidateRebalance with
-      holdingCids = [f.hBtc, f.hEth], oraclePrices = f.prices
-      legs = goodLegs f, investors = [f.alice], lastRebalance = None
+      fundCid = f.fund, vaultIndexCid = f.index, priceSetCid = f.priceSet
+      legs = goodLegs f, lastRebalance = None
 
-  bounds <- submit (actAs [f.manager, f.vault]) do createCmd MandateBounds with manager = f.manager, vault = f.vault, fundId = "BALLAST-01", version = 1, universe = [f.cBTC, f.cETH], driftBand = 0.05, maxWeight = 0.8, minRebalanceGap = hours 1, investors = [f.alice]
+  _ <- submit (actAs [f.manager, f.vault]) do createCmd MandateBounds with manager = f.manager, vault = f.vault, fundId = "BALLAST-01", version = 1, universe = [f.cBTC, f.cETH], driftBand = 0.05, maxWeight = 0.8, minRebalanceGap = hours 1, investors = [f.alice]
 
   -- THE CLAIM: the investor holds the fund to the rules without being able to read them.
   aMandate <- query @Mandate f.alice

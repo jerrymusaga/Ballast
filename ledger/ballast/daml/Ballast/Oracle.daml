@@ -1,0 +1,43 @@
+-- Ballast — prices the manager did not choose.
+--
+-- Until this module existed, "the ledger computed the NAV" meant "the ledger correctly
+-- multiplied numbers the manager supplied". The arithmetic was trustworthy and the inputs
+-- were not, which is a distinction an investor cannot audit from the outside.
+--
+-- A PriceSet moves that trust somewhere explicit and conventional: an independent pricing
+-- source, exactly as a real fund uses an administrator rather than marking its own book.
+-- Ballast does not claim the oracle is trustless. It claims the manager cannot mark the book.
+module Ballast.Oracle where
+
+import DA.List (dedup)
+import DA.Time (RelTime, addRelTime)
+import Splice.Api.Token.HoldingV1
+
+template PriceSet
+  with
+    oracle    : Party
+    prices    : [(InstrumentId, Decimal)]
+    asOf      : Time
+    consumers : [Party]   -- the funds entitled to read this set
+  where
+    signatory oracle
+    observer consumers
+
+    ensure
+      not (null prices)
+        && all (\(_, p) -> p > 0.0) prices
+        && length (dedup (map fst prices)) == length prices
+
+-- | Read a price set, refusing one that is stale or from the wrong source.
+--
+-- Staleness matters more than it looks. A manager who could choose WHICH price set to value
+-- against could wait for a favourable one and publish that — picking the moment is the same
+-- abuse as picking the number. The freshness window is what removes the choice.
+freshPrices : ContractId PriceSet -> Party -> RelTime -> Update [(InstrumentId, Decimal)]
+freshPrices cid expectedOracle maxAge = do
+  ps <- fetch cid
+  assertMsg "price set is not from this fund's oracle" (ps.oracle == expectedOracle)
+  now <- getTime
+  assertMsg "price set is stale" (now <= addRelTime ps.asOf maxAge)
+  assertMsg "price set is post-dated" (ps.asOf <= now)
+  pure ps.prices
