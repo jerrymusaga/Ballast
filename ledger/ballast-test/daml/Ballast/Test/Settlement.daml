@@ -1,0 +1,227 @@
+-- Ballast — a rebalance, end to end, on real CIP-56 allocations.
+--
+-- The policy suite proves the mandate decides. This proves the decision is actually WIRED to
+-- the assets: one transaction validates against the private mandate, settles both legs of a
+-- bilateral block trade through the registries, and rebuilds the fund's index from what
+-- settlement produced. If validation fails nothing moves; if either leg fails neither does.
+module Ballast.Test.Settlement where
+
+import Daml.Script
+import DA.Assert ((===))
+import DA.Time (hours, addRelTime)
+import Splice.Api.Token.AllocationV1
+import Splice.Api.Token.HoldingV1
+import Splice.Api.Token.MetadataV1
+
+import Ballast.Fund
+import Ballast.Mandate
+import Ballast.Oracle
+import Ballast.Settlement
+import Ballast.Vault
+import Ballast.Testing.Registry
+
+data Rig = Rig
+  with
+    manager  : Party
+    vault    : Party
+    lp       : Party
+    alice    : Party
+    oracle   : Party
+    btcReg   : Party
+    ethReg   : Party
+    cBTC     : InstrumentId
+    cETH     : InstrumentId
+    mandate  : ContractId Mandate
+    fund     : ContractId Fund
+    index    : ContractId VaultIndex
+    priceSet : ContractId PriceSet
+    settle   : SettlementInfo
+    vaultBtc : ContractId TestHolding
+    lpEth    : ContractId TestHolding
+
+-- Baseline, same shape as the policy suite: 60/40 cBTC/cETH, band 5pp.
+-- Fund holds 12 cBTC @ 60,000 + 180 cETH @ 2,000 = NAV 1,080,000, w_btc 0.667 → drift 0.067.
+-- The compliant fix is -1.2 cBTC / +36 cETH, landing exactly on 60/40.
+rig : Text -> Script Rig
+rig settlementRef = script do
+  manager <- allocateParty "Manager"
+  vault   <- allocateParty "BallastVault"
+  lp      <- allocateParty "LiquidityProvider"
+  alice   <- allocateParty "Alice"
+  oracle  <- allocateParty "PriceOracle"
+  btcReg  <- allocateParty "cBTC-Registry"
+  ethReg  <- allocateParty "cETH-Registry"
+
+  let cBTC = InstrumentId with admin = btcReg, id = "cBTC"
+      cETH = InstrumentId with admin = ethReg, id = "cETH"
+      prices = [(cBTC, 60000.0), (cETH, 2000.0)]
+      targets = [ TargetWeight with instrument = cBTC, target = 0.6
+                , TargetWeight with instrument = cETH, target = 0.4 ]
+
+  mandate <- submit (actAs [manager, vault]) do createCmd Mandate with manager, vault, fundId = "BALLAST-01", version = 1, targets, driftBand = 0.05, maxWeight = 0.8, minRebalanceGap = hours 1, priceTolerance = 0.01
+  fund    <- submit (actAs [manager, vault]) do createCmd Fund with manager, vault, fundId = "BALLAST-01", oracle, maxPriceAge = hours 1, investors = [alice]
+
+  vaultBtc <- submit (actAs [btcReg, vault]) do createCmd TestHolding with admin = btcReg, owner = vault, instrumentId = cBTC, amount = 12.0
+  vaultEth <- submit (actAs [ethReg, vault]) do createCmd TestHolding with admin = ethReg, owner = vault, instrumentId = cETH, amount = 180.0
+  -- The counterparty's inventory. It gives 36 cETH and keeps 64 as change.
+  lpEth <- submit (actAs [ethReg, lp]) do createCmd TestHolding with admin = ethReg, owner = lp, instrumentId = cETH, amount = 100.0
+
+  index <- submit (actAs [manager, vault]) do createCmd VaultIndex with manager, vault, fundId = "BALLAST-01", holdings = [toInterfaceContractId vaultBtc, toInterfaceContractId vaultEth]
+
+  now <- getTime
+  priceSet <- submit oracle do createCmd PriceSet with oracle, prices, asOf = now, consumers = [manager, vault]
+
+  let settle = SettlementInfo with
+        executor = manager
+        settlementRef = Reference with id = settlementRef, cid = None
+        requestedAt = now
+        allocateBefore = addRelTime now (hours 1)
+        settleBefore = addRelTime now (hours 2)
+        meta = emptyMetadata
+
+  pure Rig with manager, vault, lp, alice, oracle, btcReg, ethReg, cBTC, cETH, mandate, fund, index, priceSet, settle, vaultBtc, lpEth
+
+legsOf : Rig -> [Leg]
+legsOf r =
+  [ Leg with instrument = r.cBTC, delta = -1.2, execPrice = 60000.0
+  , Leg with instrument = r.cETH, delta = 36.0, execPrice = 2000.0 ]
+
+allocSpec : SettlementInfo -> Text -> Party -> Party -> InstrumentId -> Decimal -> AllocationSpecification
+allocSpec settlement legId sender receiver instrumentId amount = AllocationSpecification with
+  settlement
+  transferLegId = legId
+  transferLeg = TransferLeg with sender, receiver, amount, instrumentId, meta = emptyMetadata
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- The whole thing, once, correctly.
+-- ─────────────────────────────────────────────────────────────────────────────
+rebalanceSettlesAtomically : Script ()
+rebalanceSettlesAtomically = script do
+  r <- rig "REBAL-001"
+
+  -- Each side reserves its own assets with its own registry. Ballast is not involved.
+  vAlloc <- submit (actAs [r.btcReg, r.vault]) do createCmd TestAllocation with admin = r.btcReg, spec = allocSpec r.settle "sell-btc" r.vault r.lp r.cBTC 1.2, backing = [r.vaultBtc]
+  lAlloc <- submit (actAs [r.ethReg, r.lp]) do createCmd TestAllocation with admin = r.ethReg, spec = allocSpec r.settle "buy-eth" r.lp r.vault r.cETH 36.0, backing = [r.lpEth]
+
+  -- All three sign the block: Allocation_ExecuteTransfer needs executor, sender and receiver.
+  s <- submit (actAs [r.manager, r.vault, r.lp]) do createCmd RebalanceSettlement with manager = r.manager, vault = r.vault, lp = r.lp, fundId = "BALLAST-01", legs = legsOf r, settlementRef = "REBAL-001"
+
+  -- readAs [vault, lp]: settling needs to read BOTH sides' backing holdings. In a real
+  -- deployment this is explicit disclosure of the counterparty's allocation at submission
+  -- time, NOT standing read rights over the LP — a fund with blanket visibility into its
+  -- dealer's book would be the same leak running in the opposite direction.
+  res <- submit (actAs r.manager <> readAs [r.vault, r.lp]) do
+    exerciseCmd s Execute with
+      mandateCid = r.mandate, fundCid = r.fund, vaultIndexCid = r.index, priceSetCid = r.priceSet
+      allocationCids = [toInterfaceContractId vAlloc, toInterfaceContractId lAlloc]
+      lastRebalance = None
+
+  -- The investor gets the proof, and nothing else.
+  proofs <- query @ComplianceRecord r.alice
+  length proofs === 1
+  let [(_, proof)] = proofs
+  proof.mandateVersion === 1
+  proof.navBefore === 1080000.0
+  proof.navAfter === 1080000.0     -- a rebalance reallocates; it does not change what the fund is worth
+
+  -- The assets actually moved: the fund is now 10.8 cBTC / 216 cETH, i.e. exactly 60/40.
+  vHoldings <- queryInterface @Holding r.vault
+  let held i = sum [hv.amount | (_, Some hv) <- vHoldings, hv.instrumentId == i]
+  held r.cBTC === 10.8
+  held r.cETH === 216.0
+
+  -- The counterparty got its side.
+  lHoldings <- queryInterface @Holding r.lp
+  let lpHeld i = sum [hv.amount | (_, Some hv) <- lHoldings, hv.instrumentId == i]
+  lpHeld r.cBTC === 1.2
+  lpHeld r.cETH === 64.0
+
+  -- And the index was rebuilt from what settlement produced, so the NEXT NAV is right without
+  -- anyone hand-maintaining it. This is the invariant the whole completeness argument rests on.
+  nav <- submit (actAs r.manager <> readAs r.vault) do
+    exerciseCmd r.fund PublishNav with vaultIndexCid = res.newIndex, priceSetCid = r.priceSet
+  navs <- query @NavRecord r.alice
+  let [(_, n)] = filter (\(cid, _) -> cid == nav) navs
+  n.nav === 1080000.0
+
+  -- The market still saw nothing.
+  market <- allocateParty "Market"
+  mAll <- queryInterface @Holding market
+  mNav <- query @NavRecord market
+  length mAll === 0
+  length mNav === 0
+
+  pure ()
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Validating one trade and settling another. The executor's cardinal sin.
+-- ─────────────────────────────────────────────────────────────────────────────
+executorCannotSettleADifferentTrade : Script ()
+executorCannotSettleADifferentTrade = script do
+  r <- rig "REBAL-001"
+  s <- submit (actAs [r.manager, r.vault, r.lp]) do createCmd RebalanceSettlement with manager = r.manager, vault = r.vault, lp = r.lp, fundId = "BALLAST-01", legs = legsOf r, settlementRef = "REBAL-001"
+
+  let exec allocs = exerciseCmd s Execute with
+        mandateCid = r.mandate, fundCid = r.fund, vaultIndexCid = r.index, priceSetCid = r.priceSet
+        allocationCids = allocs, lastRebalance = None
+      asManager = actAs r.manager <> readAs [r.vault, r.lp]
+
+  -- 1. The fund ships MORE than the approved leg — the mandate said 1.2 cBTC, this says 3.0.
+  bigAlloc <- submit (actAs [r.btcReg, r.vault]) do createCmd TestAllocation with admin = r.btcReg, spec = allocSpec r.settle "sell-btc" r.vault r.lp r.cBTC 3.0, backing = [r.vaultBtc]
+  lAlloc   <- submit (actAs [r.ethReg, r.lp]) do createCmd TestAllocation with admin = r.ethReg, spec = allocSpec r.settle "buy-eth" r.lp r.vault r.cETH 36.0, backing = [r.lpEth]
+  submitMustFail asManager do exec [toInterfaceContractId bigAlloc, toInterfaceContractId lAlloc]
+
+  -- 2. Direction reversed: the fund BUYS cBTC on a leg the mandate approved as a sale.
+  wrongWay <- submit (actAs [r.btcReg, r.lp]) do createCmd TestAllocation with admin = r.btcReg, spec = allocSpec r.settle "sell-btc" r.lp r.vault r.cBTC 1.2, backing = [r.vaultBtc]
+  submitMustFail asManager do exec [toInterfaceContractId wrongWay, toInterfaceContractId lAlloc]
+
+  -- 3. Only one leg presented, so the fund would give up cBTC and receive nothing.
+  goodBtc <- submit (actAs [r.btcReg, r.vault]) do createCmd TestAllocation with admin = r.btcReg, spec = allocSpec r.settle "sell-btc" r.vault r.lp r.cBTC 1.2, backing = [r.vaultBtc]
+  submitMustFail asManager do exec [toInterfaceContractId goodBtc]
+
+  -- 4. An allocation belonging to a completely different settlement.
+  let otherSettle = r.settle with settlementRef = Reference with id = "REBAL-999", cid = None
+  strayAlloc <- submit (actAs [r.ethReg, r.lp]) do createCmd TestAllocation with admin = r.ethReg, spec = allocSpec otherSettle "buy-eth" r.lp r.vault r.cETH 36.0, backing = [r.lpEth]
+  submitMustFail asManager do exec [toInterfaceContractId goodBtc, toInterfaceContractId strayAlloc]
+
+  -- 5. A settlement naming someone else as executor, which Ballast could not have authorised.
+  let notUs = r.settle with executor = r.lp
+  foreignAlloc <- submit (actAs [r.btcReg, r.vault]) do createCmd TestAllocation with admin = r.btcReg, spec = allocSpec notUs "sell-btc" r.vault r.lp r.cBTC 1.2, backing = [r.vaultBtc]
+  submitMustFail asManager do exec [toInterfaceContractId foreignAlloc, toInterfaceContractId lAlloc]
+
+  -- The honest pair still settles, so none of the above failed for an unrelated reason.
+  _ <- submit asManager do exec [toInterfaceContractId goodBtc, toInterfaceContractId lAlloc]
+  pure ()
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- A non-compliant rebalance does not move assets. Not "is logged" — does not move.
+-- ─────────────────────────────────────────────────────────────────────────────
+failedValidationMovesNothing : Script ()
+failedValidationMovesNothing = script do
+  r <- rig "REBAL-001"
+
+  -- Legs that under-trade: they leave the basket still outside the drift band.
+  let badLegs = [ Leg with instrument = r.cBTC, delta = -0.2, execPrice = 60000.0
+                , Leg with instrument = r.cETH, delta = 6.0, execPrice = 2000.0 ]
+
+  s <- submit (actAs [r.manager, r.vault, r.lp]) do createCmd RebalanceSettlement with manager = r.manager, vault = r.vault, lp = r.lp, fundId = "BALLAST-01", legs = badLegs, settlementRef = "REBAL-001"
+  vAlloc <- submit (actAs [r.btcReg, r.vault]) do createCmd TestAllocation with admin = r.btcReg, spec = allocSpec r.settle "sell-btc" r.vault r.lp r.cBTC 0.2, backing = [r.vaultBtc]
+  lAlloc <- submit (actAs [r.ethReg, r.lp]) do createCmd TestAllocation with admin = r.ethReg, spec = allocSpec r.settle "buy-eth" r.lp r.vault r.cETH 6.0, backing = [r.lpEth]
+
+  submitMustFail (actAs r.manager <> readAs [r.vault, r.lp]) do
+    exerciseCmd s Execute with
+      mandateCid = r.mandate, fundCid = r.fund, vaultIndexCid = r.index, priceSetCid = r.priceSet
+      allocationCids = [toInterfaceContractId vAlloc, toInterfaceContractId lAlloc]
+      lastRebalance = None
+
+  -- The portfolio is untouched: still 12 cBTC and 180 cETH, not 11.8 and 186.
+  vHoldings <- queryInterface @Holding r.vault
+  let held i = sum [hv.amount | (_, Some hv) <- vHoldings, hv.instrumentId == i]
+  held r.cBTC === 12.0
+  held r.cETH === 180.0
+
+  -- And no proof was emitted for a rebalance that never happened.
+  proofs <- query @ComplianceRecord r.alice
+  length proofs === 0
+
+  pure ()

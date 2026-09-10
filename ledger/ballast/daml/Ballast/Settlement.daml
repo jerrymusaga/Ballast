@@ -1,0 +1,128 @@
+-- Ballast — executing a rebalance without ever touching custody.
+--
+-- Ballast does not implement CIP-56 settlement, and that is the point. `Allocation` is an
+-- interface the REGISTRY implements: each side reserves its own assets against a named
+-- settlement, and `Allocation_ExecuteTransfer` is jointly controlled by the executor, the
+-- sender and the receiver. Ballast's role is executor — it decides WHETHER the trade may
+-- happen and then triggers both legs atomically. It never defines an asset, never holds
+-- custody logic, and never learns anything the registry did not already know.
+--
+-- The one thing an executor must not get wrong is validating one trade and executing a
+-- different one. `Execute` therefore checks that the allocations presented correspond exactly
+-- to the legs the mandate approved — same instruments, same amounts, same direction, nothing
+-- extra. Without that check the policy contract would be theatre: the manager could get a
+-- compliant rebalance approved and settle something else entirely.
+module Ballast.Settlement where
+
+import DA.Foldable (forA_)
+import DA.List (dedup)
+import Splice.Api.Token.AllocationV1
+import Splice.Api.Token.HoldingV1
+import Splice.Api.Token.MetadataV1
+
+import Ballast.Fund (Fund)
+import Ballast.Mandate
+import Ballast.Oracle
+import Ballast.Vault
+
+-- | What a settled rebalance produced.
+data RebalanceResult = RebalanceResult
+  with
+    proof    : ContractId ComplianceRecord
+    newIndex : ContractId VaultIndex
+  deriving (Eq, Show)
+
+-- | A bilateral block trade the fund and its counterparty have both agreed to.
+--
+-- Signed by all three parties because `Allocation_ExecuteTransfer` needs the authority of
+-- executor, sender AND receiver — so the settlement agreement is what carries them into one
+-- transaction. This is also how real index funds rebalance: a negotiated block with a dealer
+-- rather than a public order, precisely to avoid showing the market what they are doing.
+--
+-- The LP sees this contract, and therefore sees the trade. That is unavoidable — you cannot
+-- trade without telling your counterparty — and it is why the design rotates liquidity
+-- providers rather than pretending the leak does not exist.
+template RebalanceSettlement
+  with
+    manager       : Party
+    vault         : Party
+    lp            : Party
+    fundId        : Text
+    legs          : [Leg]
+    settlementRef : Text
+  where
+    signatory manager, vault, lp
+
+    ensure not (null legs) && length (dedup (map (\l -> l.instrument) legs)) == length legs
+
+    -- | Validate against the private mandate, then settle both legs, then reindex — one
+    -- transaction. If validation fails, nothing moves. If either leg fails, neither moves.
+    choice Execute : RebalanceResult
+      with
+        mandateCid    : ContractId Mandate
+        fundCid       : ContractId Fund
+        vaultIndexCid : ContractId VaultIndex
+        priceSetCid   : ContractId PriceSet
+        allocationCids : [ContractId Allocation]
+        lastRebalance : Optional Time
+      controller manager
+      do
+        -- 1. THE MANDATE DECIDES. Everything downstream is conditional on this returning.
+        proof <- exercise mandateCid ValidateRebalance with
+          fundCid, vaultIndexCid, priceSetCid, legs, lastRebalance
+
+        -- 2. THE ALLOCATIONS MUST BE THE TRADE THAT WAS APPROVED.
+        assertMsg "duplicate allocation presented"
+          (length (dedup allocationCids) == length allocationCids)
+        assertMsg "allocation count does not match the approved legs"
+          (length allocationCids == length legs)
+
+        views <- forA allocationCids \cid -> do
+          av <- view <$> fetch cid
+          let leg = av.allocation.transferLeg
+              st  = av.allocation.settlement
+          -- Ballast must be the executor, or it could not have authorised the transfer.
+          assertMsg "settlement names a different executor" (st.executor == manager)
+          assertMsg "allocation belongs to a different settlement"
+            (st.settlementRef.id == settlementRef)
+          -- Exactly one approved leg must match this allocation, in amount AND direction.
+          let matches = [ l | l <- legs
+                            , l.instrument == leg.instrumentId
+                            , if l.delta < 0.0
+                                then leg.sender == vault && leg.receiver == lp && leg.amount == negate l.delta
+                                else leg.sender == lp && leg.receiver == vault && leg.amount == l.delta ]
+          assertMsg ("allocation does not match any approved leg: " <> leg.instrumentId.id)
+            (length matches == 1)
+          pure av
+
+        -- Every approved leg must be covered — an allocation set that silently drops one
+        -- would settle a different, unapproved trade.
+        forA_ legs \l ->
+          assertMsg ("no allocation covers approved leg: " <> l.instrument.id)
+            (any (\av -> av.allocation.transferLeg.instrumentId == l.instrument) views)
+
+        -- 3. SETTLE. Atomic across both legs by construction: same transaction.
+        results <- forA allocationCids \cid ->
+          exercise cid Allocation_ExecuteTransfer with
+            extraArgs = ExtraArgs with context = emptyChoiceContext, meta = emptyMetadata
+
+        -- 4. REINDEX from what settlement actually produced, never from a list the manager
+        --    supplied. The holdings that backed the fund's outgoing legs are gone; what comes
+        --    back is the change on those legs plus everything received on the incoming ones.
+        idx <- fetch vaultIndexCid
+        let consumed  = concatMap (\av -> av.holdingCids) views
+            untouched = filter (\c -> c `notElem` consumed) idx.holdings
+            -- Settlement hands back holdings for BOTH sides of every leg. Take only the
+            -- fund's: its change where the fund was the sender, its receipts where the fund
+            -- was the receiver. The counterparty's holdings are none of the index's business
+            -- — and not reading them keeps the fund from needing visibility it should not have.
+            ours = concat
+              [ (if leg.sender == vault then r.senderHoldingCids else [])
+                  <> (if leg.receiver == vault then r.receiverHoldingCids else [])
+              | (av, r) <- zip views results
+              , let leg = av.allocation.transferLeg ]
+
+        archive vaultIndexCid
+        newIndex <- create VaultIndex with manager, vault, fundId, holdings = dedup (untouched <> ours)
+
+        pure RebalanceResult with proof, newIndex

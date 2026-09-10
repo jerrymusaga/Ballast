@@ -1,23 +1,25 @@
 -- TEST SCAFFOLDING ONLY — not part of the Ballast product.
 --
 -- Ballast never defines its own notion of an asset. The vault is written against the real
--- Canton Token Standard interface, `Splice.Api.Token.HoldingV1.Holding`, so on DevNet it
--- holds whatever a real registry issued — real cBTC, cETH, USDCx.
+-- Canton Token Standard interfaces, so on DevNet it holds whatever a real registry issued —
+-- real cBTC, cETH, USDCx.
 --
--- But a Daml Script test cannot reach DevNet's registries, so *something* local has to issue
--- holdings. That is all this module is: a minimal issuer that implements the same interface.
--- The INTERFACE is real; only the issuer is local. Nothing in Ballast.Vault or Ballast.Spike
--- refers to this template — they only ever see `ContractId Holding`, which is exactly what
--- they will see against the real cBTC registry.
+-- But a Daml Script test cannot reach DevNet's registries, so something local has to issue
+-- holdings and back allocations. That is all this module is: a minimal issuer implementing
+-- the same interfaces. The INTERFACES are real; only the issuer is local. Nothing in the
+-- `ballast` package refers to this module — it sees only `ContractId Holding` and
+-- `ContractId Allocation`, exactly what it will see against a real registry.
 module Ballast.Testing.Registry where
 
+import DA.Foldable (forA_)
+import Splice.Api.Token.AllocationV1
 import Splice.Api.Token.HoldingV1
-import Splice.Api.Token.MetadataV1 (emptyMetadata)
+import Splice.Api.Token.MetadataV1
 
 -- Note the signatories: `admin, owner`. The instrument admin co-signs every holding it
 -- issues, because it must be able to authorise transfers of it. That is not a quirk of this
 -- test registry — it is inherent to how a registry administers an instrument, and it is why
--- README's threat model says the registry sees the fund's holdings of its own instrument.
+-- the README's threat model says the registry sees the fund's holdings of its own instrument.
 template TestHolding
   with
     admin        : Party
@@ -35,3 +37,69 @@ template TestHolding
         amount
         lock = None
         meta = emptyMetadata
+
+-- | Mint a holding, or nothing at all if there is nothing to mint.
+mintFor : Party -> Party -> InstrumentId -> Decimal -> Update [ContractId Holding]
+mintFor admin owner instrumentId amount =
+  if amount <= 0.0
+    then pure []
+    else do
+      c <- create TestHolding with admin, owner, instrumentId, amount
+      pure [toInterfaceContractId c]
+
+-- | Archive the backing holdings and hand their whole value back to the sender.
+releaseToSender : Party -> AllocationSpecification -> [ContractId TestHolding] -> Update [ContractId Holding]
+releaseToSender admin spec backing = do
+  hs <- forA backing fetch
+  let total = sum (map (\h -> h.amount) hs)
+  forA_ backing archive
+  mintFor admin spec.transferLeg.sender spec.transferLeg.instrumentId total
+
+-- | A minimal CIP-56 `Allocation`, so the settlement executor can be tested end to end.
+--
+-- ONE DELIBERATE SIMPLIFICATION, stated because it matters: a real registry LOCKS the backing
+-- holdings when the allocation is created, which archives them and mints locked replacements.
+-- This one leaves them alone until execution. That keeps the VaultIndex accurate between
+-- allocation and settlement, which is convenient for testing the executor but is NOT how a
+-- production registry behaves. Wiring Ballast against a locking registry will require the
+-- allocate step to be Ballast-mediated too, so the index is updated when locking changes the
+-- holdings' contract ids. That work is not done yet.
+template TestAllocation
+  with
+    admin   : Party
+    spec    : AllocationSpecification
+    backing : [ContractId TestHolding]
+  where
+    signatory admin, spec.transferLeg.sender
+    observer spec.transferLeg.receiver, spec.settlement.executor
+
+    ensure not (null backing) && spec.transferLeg.amount > 0.0
+
+    interface instance Allocation for TestAllocation where
+      view = AllocationView with
+        allocation = spec
+        holdingCids = map toInterfaceContractId backing
+        meta = emptyMetadata
+
+      allocation_executeTransferImpl _self _arg = do
+        -- The receiver's authority arrives via the choice controllers, which is what lets a
+        -- holding be minted for them here.
+        hs <- forA backing fetch
+        let total = sum (map (\h -> h.amount) hs)
+            amt = spec.transferLeg.amount
+        assertMsg "insufficient backing for this allocation" (total >= amt)
+        forA_ backing archive
+        recv   <- mintFor admin spec.transferLeg.receiver spec.transferLeg.instrumentId amt
+        change <- mintFor admin spec.transferLeg.sender spec.transferLeg.instrumentId (total - amt)
+        pure Allocation_ExecuteTransferResult with
+          senderHoldingCids = change
+          receiverHoldingCids = recv
+          meta = emptyMetadata
+
+      allocation_cancelImpl _self _arg = do
+        released <- releaseToSender admin spec backing
+        pure Allocation_CancelResult with senderHoldingCids = released, meta = emptyMetadata
+
+      allocation_withdrawImpl _self _arg = do
+        released <- releaseToSender admin spec backing
+        pure Allocation_WithdrawResult with senderHoldingCids = released, meta = emptyMetadata

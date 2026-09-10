@@ -137,6 +137,7 @@ ledger/
     Oracle        signed, freshness-checked price sets
     Fund          NAV published from the index at oracle prices
     Mandate       the private strategy, and the policy that enforces it
+    Settlement    the executor — validates, settles both legs, reindexes, atomically
   ballast-test/   the test registry + proofs — never deployed
 ```
 
@@ -162,7 +163,7 @@ not on the DevNet where real cBTC and cETH exist. Targeting v2 would mean holdin
 cd ledger && daml build --all && cd ballast-test && daml test
 ```
 
-Proven so far, on **real CIP-56 `Holding` interface contracts**, in 8 scripts:
+Proven so far, on **real CIP-56 `Holding` and `Allocation` interface contracts**, in 11 scripts:
 
 - **`fourLenses`** — a NAV computed from holdings is disclosed to investors who cannot see
   those holdings; the market sees nothing; the two instrument registries each see only their
@@ -176,6 +177,17 @@ Proven so far, on **real CIP-56 `Holding` interface contracts**, in 8 scripts:
   band is breached, under-trading, trades that are not self-financing, execution prices away
   from the oracle, and rebalancing inside the cadence floor. The compliance proof cannot be
   forged, and the mandate cannot be rewritten by the manager alone.
+- **`rebalanceSettlesAtomically`** — a full bilateral block trade on real CIP-56 allocations:
+  one transaction validates against the private mandate, settles both legs through the
+  registries, and rebuilds the fund's index from what settlement produced. The fund ends on
+  its targets, the counterparty gets its side, the next NAV is right without anyone
+  hand-maintaining anything, and the market saw none of it.
+- **`executorCannotSettleADifferentTrade`** — the executor's cardinal sin, refused five ways:
+  shipping more than the approved leg, reversing a leg's direction, presenting only one leg,
+  splicing in an allocation from another settlement, and settling under an executor Ballast
+  never authorised.
+- **`failedValidationMovesNothing`** — when validation fails the portfolio is *untouched*, and
+  no proof is emitted for a rebalance that never happened.
 
 ### What is deliberately still not claimed
 
@@ -183,10 +195,17 @@ Proven so far, on **real CIP-56 `Holding` interface contracts**, in 8 scripts:
   checkable: the manager cannot mark its own book, cannot pick which price set to value
   against, and cannot pick the moment. That is where a real fund puts the trust too — in an
   administrator rather than in the portfolio manager.
-- **Settlement is not built yet.** `ValidateRebalance` decides whether a rebalance is
-  admissible; it does not yet move the assets or update the index. Until CIP-56 allocation
-  settlement lands, the policy is proven and the plumbing is not.
+- **The test registry does not lock.** A production CIP-56 registry locks the backing
+  holdings when an allocation is created, which archives them and mints locked replacements
+  with new contract ids. The local test registry leaves them alone until execution. Wiring
+  Ballast to a locking registry means the *allocate* step must be Ballast-mediated too, so the
+  index is updated when locking changes those ids. Until then the completeness invariant holds
+  against the test registry and not yet against a real one.
+- **The executor needs to read the counterparty's allocation.** In the tests that is a
+  `readAs`; in a real deployment it must be explicit disclosure at submission time, not
+  standing read rights over the LP — a fund with blanket visibility into its dealer's book
+  would be the same leak running in the opposite direction.
 - **NAV still leaks the portfolio, slowly.** Nothing above changes the linear algebra. Breadth,
   cadence and rounding remain the dials.
 
-Not built yet: subscribe and redeem, the rebalance settlement itself, and the keeper.
+Not built yet: subscribe and redeem, and the keeper.
