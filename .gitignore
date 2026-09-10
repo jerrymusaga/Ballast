@@ -1,0 +1,10 @@
+.daml/
+dist/
+node_modules/
+*.dar
+.DS_Store
+
+# The vendored CIP-56 interface DARs are inputs, not build output — they must be
+# committed so the ledger package builds anywhere (and on Seaport's build runner).
+!ledger/dars/*.dar
+.vscode/

@@ -1,0 +1,53 @@
+-- Ballast — valuation primitives shared by NAV publication and policy validation.
+--
+-- Everything here reads holdings through the real CIP-56 `Holding` interface. Nothing knows
+-- which template implements it, so the same code runs against DevNet cBTC.
+module Ballast.Valuation where
+
+import DA.List (dedup)
+import Splice.Api.Token.HoldingV1
+
+-- | Fetch holdings through the CIP-56 interface and check they are this fund's.
+--
+-- A CIP-56 holding carries no fund identifier, so a vault party holding assets for two funds
+-- could not tell them apart. The invariant Ballast relies on is ONE VAULT PARTY PER FUND, and
+-- the ownership check is what enforces it.
+vaultHoldings : Party -> [ContractId Holding] -> Update [HoldingView]
+vaultHoldings vault cids = do
+  assertMsg "duplicate holding presented" (length (dedup cids) == length cids)
+  forA cids \cid -> do
+    hv <- view <$> fetch cid
+    assertMsg "holding is not owned by this fund's vault" (hv.owner == vault)
+    pure hv
+
+-- | A missing price must fail loudly. Defaulting to zero would silently under-report the
+-- fund, which is the most dangerous way for a NAV to be wrong.
+priceOf : [(InstrumentId, Decimal)] -> InstrumentId -> Update Decimal
+priceOf prices i = case lookup i prices of
+  Some p -> do
+    assertMsg ("price must be positive for " <> i.id) (p > 0.0)
+    pure p
+  None -> fail ("no price supplied for instrument " <> i.id)
+
+-- | Total quantity per instrument.
+--
+-- CIP-56 holdings FRAGMENT: a vault can hold many separate `Holding` contracts of the same
+-- instrument. Summing rows would be right for NAV and wrong for weights, so aggregate first
+-- and derive both from the aggregate.
+quantities : [HoldingView] -> [(InstrumentId, Decimal)]
+quantities hvs =
+  let instruments = dedup (map (\hv -> hv.instrumentId) hvs)
+      total i = sum [hv.amount | hv <- hvs, hv.instrumentId == i]
+  in map (\i -> (i, total i)) instruments
+
+-- | Value a per-instrument position list.
+navOf : [(InstrumentId, Decimal)] -> [(InstrumentId, Decimal)] -> Update Decimal
+navOf prices qs = do
+  legs <- forA qs \(i, q) -> do
+    p <- priceOf prices i
+    pure (q * p)
+  pure (sum legs)
+
+-- | Quantity of one instrument, zero if not held.
+quantityOf : [(InstrumentId, Decimal)] -> InstrumentId -> Decimal
+quantityOf qs i = optional 0.0 identity (lookup i qs)

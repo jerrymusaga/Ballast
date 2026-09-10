@@ -1,0 +1,20 @@
+# Tests + the local test registry. NEVER deployed — this is where daml-script and the only
+# token template in the repo live, quarantined from the product package on purpose.
+sdk-version: 3.4.11
+name: ballast-test
+version: 0.1.0
+source: daml
+build-options:
+  - --target=2.1
+  # This package intentionally contains BOTH a template (the test registry) and daml-script.
+  # That combination warns because it bloats a participant on upload — which is exactly why
+  # this package is never uploaded. The product package `ballast` has neither.
+  - -Wno-template-interface-depends-on-daml-script
+dependencies:
+  - daml-prim
+  - daml-stdlib
+  - daml-script
+data-dependencies:
+  - ../dars/splice-api-token-metadata-v1-1.0.0.dar
+  - ../dars/splice-api-token-holding-v1-1.0.0.dar
+  - ../ballast/.daml/dist/ballast-0.1.0.dar

@@ -1,0 +1,218 @@
+-- Ballast — the mandate, and the policy that enforces it.
+--
+-- This is the half of the product that makes the other half worth anything. Hiding a
+-- portfolio is old; semi-transparent ETFs have done it for years. What they cannot do is
+-- prove the strategy was followed without showing you the strategy. That is what lives here.
+--
+-- ┌─ THE SECURITY MODEL, which everything below depends on ────────────────────────────────┐
+-- │                                                                                        │
+-- │ The manager MUST NOT hold `CanActAs` on the vault party. Only `ReadAs`.                 │
+-- │                                                                                        │
+-- │ Every asset the fund owns is a CIP-56 holding signed by (registry, vault), so moving it │
+-- │ requires the VAULT's authority. If the manager could act as the vault, it could move    │
+-- │ the assets directly and no on-ledger policy could stop it — the contract would be       │
+-- │ decoration. Because the manager cannot, the only way vault authority ever appears in a  │
+-- │ transaction is through a choice on a contract the vault has signed: this one. The       │
+-- │ mandate does not merely *record* the policy, it *gates the assets*.                     │
+-- │                                                                                        │
+-- │ Formation is the single exception: creating Fund and Mandate needs actAs [manager,      │
+-- │ vault], because that is the moment the vault delegates. After that, delegation is only  │
+-- │ ever exercised through validated choices.                                               │
+-- │                                                                                        │
+-- │ The same rule makes ComplianceRecord unforgeable: it is signed by manager AND vault, so │
+-- │ a manager acting alone cannot create one. A proof exists only where validation ran.     │
+-- └────────────────────────────────────────────────────────────────────────────────────────┘
+module Ballast.Mandate where
+
+import DA.Foldable (forA_, maximum)
+import DA.List (dedup)
+import DA.Time (RelTime, addRelTime)
+import Splice.Api.Token.HoldingV1
+
+import Ballast.Valuation
+
+-- | One target weight in the basket. Fractions of NAV; the set sums to 1.
+data TargetWeight = TargetWeight
+  with
+    instrument : InstrumentId
+    target     : Decimal
+  deriving (Eq, Show)
+
+-- | One leg of a proposed rebalance. `delta` is the SIGNED change in quantity: positive buys,
+-- negative sells. `execPrice` is what the counterparty actually gives, which is checked
+-- against the oracle rather than trusted.
+data Leg = Leg
+  with
+    instrument : InstrumentId
+    delta      : Decimal
+    execPrice  : Decimal
+  deriving (Eq, Show)
+
+-- | What investors are told. The bounds, never the parameters.
+--
+-- Investors get the universe, the band, the concentration cap and the cadence — enough to
+-- know what they own and to hold the fund to it. They do NOT get the target weights, because
+-- weights plus public prices plus a published NAV is just arithmetic, and investors are
+-- market participants: anyone can become one by buying a single unit.
+--
+-- `version` is the tamper-evidence. Investors cannot read the mandate, but every
+-- ComplianceRecord echoes the version it validated against, so a manager who quietly amends
+-- the strategy cannot do it invisibly.
+template MandateBounds
+  with
+    manager         : Party
+    vault           : Party
+    fundId          : Text
+    version         : Int
+    universe        : [InstrumentId]
+    driftBand       : Decimal
+    maxWeight       : Decimal
+    minRebalanceGap : RelTime
+    investors       : [Party]
+  where
+    signatory manager, vault
+    observer investors
+
+-- | The proof investors receive. Signed by manager AND vault, so it can only come from a
+-- transaction that carried vault authority — which, per the security model above, means a
+-- transaction that ran the validation below.
+--
+-- Note what it does NOT contain: no weights, no legs, no instruments, no counterparty. It
+-- says a rebalance happened, that it satisfied mandate version N, and what the fund was
+-- worth either side of it.
+template ComplianceRecord
+  with
+    manager        : Party
+    vault          : Party
+    fundId         : Text
+    mandateVersion : Int
+    rebalancedAt   : Time
+    navBefore      : Decimal
+    navAfter       : Decimal
+    legCount       : Int
+    investors      : [Party]
+  where
+    signatory manager, vault
+    observer investors
+
+-- | The private half. Read by the ledger on every rebalance; disclosed to nobody.
+template Mandate
+  with
+    manager         : Party
+    vault           : Party
+    fundId          : Text
+    version         : Int
+    targets         : [TargetWeight]
+    driftBand       : Decimal   -- max |actual weight - target weight| tolerated
+    maxWeight       : Decimal   -- concentration cap on any single instrument
+    minRebalanceGap : RelTime   -- cadence floor, so the fund cannot churn
+    priceTolerance  : Decimal   -- max relative gap between execution and oracle price
+  where
+    signatory manager, vault
+    -- No investor observer. Deliberately. This is the contract only the ledger reads.
+
+    ensure
+      not (null targets)
+        && all (\t -> t.target > 0.0) targets
+        && length (dedup (map (\t -> t.instrument) targets)) == length targets
+        && abs (sum (map (\t -> t.target) targets) - 1.0) < 0.0000000001
+        && driftBand > 0.0 && driftBand < 1.0
+        && maxWeight > 0.0 && maxWeight <= 1.0
+        && priceTolerance >= 0.0 && priceTolerance < 1.0
+
+    -- | Validate a proposed rebalance against the private mandate.
+    --
+    -- Every check below is a way the manager could otherwise have deviated. If any fails the
+    -- transaction does not commit, which means the assets do not move — not that a warning is
+    -- logged. The manager proposes; this decides.
+    nonconsuming choice ValidateRebalance : ContractId ComplianceRecord
+      with
+        holdingCids   : [ContractId Holding]
+        oraclePrices  : [(InstrumentId, Decimal)]
+        legs          : [Leg]
+        investors     : [Party]
+        lastRebalance : Optional Time
+      controller manager
+      do
+        now <- getTime
+
+        -- CADENCE. A fund that rebalances whenever it likes is a fund that can trade for
+        -- reasons other than drift.
+        case lastRebalance of
+          Some t  -> assertMsg "rebalancing sooner than the mandate allows"
+                       (now >= addRelTime t minRebalanceGap)
+          None    -> pure ()
+
+        hvs <- vaultHoldings vault holdingCids
+        let pre = quantities hvs
+        navPre <- navOf oraclePrices pre
+        assertMsg "fund has no value to rebalance" (navPre > 0.0)
+
+        -- UNIVERSE, both sides. Nothing held off-mandate, nothing traded off-mandate.
+        forA_ pre \(i, _) ->
+          assertMsg ("holding outside the mandate universe: " <> i.id) (inUniverse targets i)
+        forA_ legs \l ->
+          assertMsg ("leg outside the mandate universe: " <> l.instrument.id) (inUniverse targets l.instrument)
+        assertMsg "duplicate leg"
+          (length (dedup (map (\l -> l.instrument) legs)) == length legs)
+        assertMsg "a rebalance must trade something" (not (null legs))
+
+        -- EXECUTION PRICE. Without this the manager can hand value to a friendly
+        -- counterparty at a price nobody checked.
+        forA_ legs \l -> do
+          op <- priceOf oraclePrices l.instrument
+          assertMsg ("execution price outside tolerance for " <> l.instrument.id)
+            (abs (l.execPrice - op) <= op * priceTolerance)
+
+        -- SELF-FINANCING. A rebalance reallocates; it does not withdraw. Value sold must pay
+        -- for value bought, or the difference walked out of the fund.
+        let cashFlow = sum [l.delta * l.execPrice | l <- legs]
+        assertMsg "rebalance is not self-financing" (abs cashFlow <= navPre * 0.0000001)
+
+        -- DRIFT MUST ACTUALLY HAVE BREACHED. This is the check that stops gratuitous
+        -- trading, and it is the one an unconstrained manager would most like to skip:
+        -- a fund that trades on a predictable schedule is a fund you can predict.
+        driftPre <- maxDrift targets oraclePrices pre navPre
+        assertMsg "no drift breach — nothing to rebalance" (driftPre > driftBand)
+
+        -- POST-TRADE STATE.
+        let post = applyLegs pre legs
+        forA_ post \(i, q) ->
+          assertMsg ("rebalance would create a negative holding in " <> i.id) (q >= 0.0)
+        navPost <- navOf oraclePrices post
+        assertMsg "fund would be left with no value" (navPost > 0.0)
+
+        driftPost <- maxDrift targets oraclePrices post navPost
+        assertMsg "post-trade basket is still outside the band" (driftPost <= driftBand)
+        assertMsg "rebalance does not reduce drift" (driftPost < driftPre)
+
+        -- CONCENTRATION.
+        forA_ post \(i, q) -> do
+          p <- priceOf oraclePrices i
+          assertMsg ("concentration cap breached for " <> i.id) (q * p <= navPost * maxWeight)
+
+        create ComplianceRecord with
+          manager, vault, fundId, mandateVersion = version, rebalancedAt = now
+          navBefore = navPre, navAfter = navPost, legCount = length legs, investors
+
+-- | Apply signed deltas to a per-instrument position list.
+applyLegs : [(InstrumentId, Decimal)] -> [Leg] -> [(InstrumentId, Decimal)]
+applyLegs pre legs =
+  let instruments = dedup (map fst pre <> map (\l -> l.instrument) legs)
+      qty i = quantityOf pre i + sum [l.delta | l <- legs, l.instrument == i]
+  in map (\i -> (i, qty i)) instruments
+
+-- | Is this instrument part of the mandate's universe?
+inUniverse : [TargetWeight] -> InstrumentId -> Bool
+inUniverse targets i = any (\t -> t.instrument == i) targets
+
+-- | The largest absolute deviation of any target instrument from its target weight.
+--
+-- Taken over the TARGETS rather than the holdings, so that an instrument the fund has fallen
+-- out of entirely still registers as fully drifted rather than silently scoring zero.
+maxDrift : [TargetWeight] -> [(InstrumentId, Decimal)] -> [(InstrumentId, Decimal)] -> Decimal -> Update Decimal
+maxDrift targets prices qs nav = do
+  ds <- forA targets \t -> do
+    p <- priceOf prices t.instrument
+    pure (abs (quantityOf qs t.instrument * p / nav - t.target))
+  pure (maximum ds)

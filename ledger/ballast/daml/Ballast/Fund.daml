@@ -1,0 +1,81 @@
+-- Ballast — the fund itself.
+--
+-- This package contains NO asset template. The fund's holdings are real Canton Token Standard
+-- assets: everything here sees them only as `Splice.Api.Token.HoldingV1.Holding`, the same
+-- interface a DevNet cBTC holding implements. Ballast never defines, mirrors or mints an
+-- instrument — it holds whatever a real registry issued.
+--
+-- (The test registry that issues holdings for the local test suite lives in the separate
+-- `ballast-test` package, so it cannot end up in the DAR that gets deployed.)
+module Ballast.Fund where
+
+import Splice.Api.Token.HoldingV1
+
+import Ballast.Valuation
+
+-- An investor's stake. Observed by that investor ALONE, so investors are invisible
+-- to each other.
+template Position
+  with
+    manager  : Party
+    investor : Party
+    fundId   : Text
+    units    : Decimal
+  where
+    signatory manager
+    observer investor
+
+-- The published NAV. Computed on-ledger from holdings the investor cannot see.
+--
+-- What this DOES guarantee: the arithmetic is the ledger's, not the manager's. The manager
+-- cannot publish a NAV that is not the sum of the holdings it presented at the prices it
+-- presented, because the choice body computed it.
+--
+-- What this does NOT guarantee: that the presented holdings are ALL the fund's holdings, or
+-- that the prices are honest. Both are manager-supplied inputs. Closing those is vault work,
+-- not spike work — a ledger-maintained index of the vault's holdings, and a signed oracle
+-- contract for prices. Until then, treat NAV as "correctly computed from asserted inputs".
+template NavRecord
+  with
+    manager   : Party
+    fundId    : Text
+    nav       : Decimal
+    asOf      : Time
+    investors : [Party]
+  where
+    signatory manager
+    observer investors
+
+template Fund
+  with
+    manager   : Party
+    vault     : Party   -- the party that OWNS the fund's CIP-56 holdings
+    fundId    : Text
+    investors : [Party]
+  where
+    signatory manager, vault
+    observer investors
+
+    -- Reads private holdings through the real CIP-56 interface, publishes only the aggregate.
+    --
+    -- Two DIFFERENT mechanisms have to line up here, and it is worth being precise because
+    -- conflating them is easy:
+    --   * AUTHORITY to fetch — satisfied because `vault` is a signatory of Fund, so the vault's
+    --     authority is present in this choice body.
+    --   * VISIBILITY to read — NOT implied by the above. The submitting participant must also be
+    --     able to read the contract, so the manager submits with `readAs vault`.
+    -- Canton keeps these separate: holding the authority to use a contract is not the same as
+    -- being able to see it.
+    nonconsuming choice PublishNav : ContractId NavRecord
+      with
+        holdingCids : [ContractId Holding]
+        prices      : [(InstrumentId, Decimal)]
+      controller manager
+      do
+        -- Every rule here lives in Ballast.Valuation, so NAV publication and policy
+        -- validation cannot drift apart: ownership, duplicates, missing prices and
+        -- per-instrument aggregation are enforced identically in both.
+        hvs <- vaultHoldings vault holdingCids
+        nav <- navOf prices (quantities hvs)
+        asOf <- getTime
+        create NavRecord with manager, fundId, nav, asOf, investors

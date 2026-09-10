@@ -1,0 +1,33 @@
+# The Ballast product package. This is what gets deployed.
+#
+# It deliberately depends on NO token implementation and NO daml-script — only on the real
+# CIP-56 interfaces. Nothing in this DAR can define or mint an instrument.
+#
+# sdk-version MUST match a version pre-installed on Seaport's build runner exactly — it does
+# not auto-install (SDK_NOT_INSTALLED). 3.4.11 is the confirmed-good one.
+sdk-version: 3.4.11
+name: ballast
+version: 0.1.0
+source: daml
+build-options:
+  - --target=2.1
+dependencies:
+  - daml-prim
+  - daml-stdlib
+# The real Canton Token Standard (CIP-56) on-ledger interfaces, v1, version 1.0.0.
+# Apache-2.0, (c) Digital Asset. Vendored so the package builds anywhere, Seaport included.
+# Package ids verified identical to those pinned by splice 0.8.0 (daml/dars.lock), the current
+# Splice release — so these are the current interface packages, not stale copies.
+#
+# WHY v1 AND NOT v2: splice 0.8.0 also ships a v2 generation (holding-v2, allocation-v2,
+# transfer-instruction-v2, burn-mint-v1). v2 is NOT on the DevNet where real cBTC/cETH live —
+# it runs only on a separate, temporary "Token Standard V2 DevNet" that is reset weekly and
+# needs alpha protocol version 35. Building against v2 would mean the fund could not hold real
+# cBTC on the network the hackathon actually runs on, which is the opposite of the goal.
+# v2 also renames the field this code checks: HoldingView.owner : Party becomes
+# HoldingView.account : Account. Revisit only if S3 turns out to run on a v2 network.
+#
+# The transfer-instruction and allocation interfaces get added here when the rebalance lands.
+data-dependencies:
+  - ../dars/splice-api-token-metadata-v1-1.0.0.dar
+  - ../dars/splice-api-token-holding-v1-1.0.0.dar

@@ -1,0 +1,253 @@
+-- Ballast — proof that the mandate binds.
+--
+-- The product's claim is not "the manager should follow the mandate". It is "the manager
+-- CANNOT deviate, because a deviating rebalance does not commit". A policy contract is only
+-- worth what it refuses, so this suite is mostly refusals.
+--
+-- Every rejection below differs from the known-good baseline in exactly ONE dimension, so a
+-- failure is attributable to the rule under test rather than to some unrelated guard.
+module Ballast.Test.Policy where
+
+import Daml.Script
+import DA.Assert ((===))
+import DA.Time (hours)
+import Splice.Api.Token.HoldingV1
+
+import Ballast.Mandate
+import Ballast.Testing.Registry (TestHolding(..))
+
+data Fixture = Fixture
+  with
+    manager : Party
+    vault   : Party
+    alice   : Party
+    cBTC    : InstrumentId
+    cETH    : InstrumentId
+    cUSD    : InstrumentId
+    prices  : [(InstrumentId, Decimal)]
+    mandate : ContractId Mandate
+    hBtc    : ContractId Holding
+    hEth    : ContractId Holding
+
+-- Baseline: targets 60/40 cBTC/cETH, band 5pp.
+-- Portfolio 12 cBTC @ 60,000 + 180 cETH @ 2,000
+--   = 720,000 + 360,000 = NAV 1,080,000
+--   w_btc = 0.6667 → drift 0.0667, which breaches the 0.05 band.
+-- The compliant fix is -1.2 cBTC / +36 cETH → 10.8 and 216, i.e. exactly 60/40.
+setup : Decimal -> Script Fixture
+setup maxWeight = do
+  manager <- allocateParty "Manager"
+  vault   <- allocateParty "BallastVault"
+  alice   <- allocateParty "Alice"
+  btcReg  <- allocateParty "cBTC-Registry"
+  ethReg  <- allocateParty "cETH-Registry"
+  usdReg  <- allocateParty "USDCx-Registry"
+
+  let cBTC = InstrumentId with admin = btcReg, id = "cBTC"
+      cETH = InstrumentId with admin = ethReg, id = "cETH"
+      cUSD = InstrumentId with admin = usdReg, id = "USDCx"
+      prices = [(cBTC, 60000.0), (cETH, 2000.0), (cUSD, 1.0)]
+      targets = [ TargetWeight with instrument = cBTC, target = 0.6
+                , TargetWeight with instrument = cETH, target = 0.4 ]
+
+  mandate <- submit (actAs [manager, vault]) do createCmd Mandate with manager, vault, fundId = "BALLAST-01", version = 1, targets, driftBand = 0.05, maxWeight, minRebalanceGap = hours 1, priceTolerance = 0.01
+
+  hBtcT <- submit (actAs [btcReg, vault]) do createCmd TestHolding with admin = btcReg, owner = vault, instrumentId = cBTC, amount = 12.0
+  hEthT <- submit (actAs [ethReg, vault]) do createCmd TestHolding with admin = ethReg, owner = vault, instrumentId = cETH, amount = 180.0
+
+  pure Fixture with
+    manager, vault, alice, cBTC, cETH, cUSD, prices, mandate
+    hBtc = toInterfaceContractId @Holding hBtcT
+    hEth = toInterfaceContractId @Holding hEthT
+
+-- The legs that actually restore 60/40.
+goodLegs : Fixture -> [Leg]
+goodLegs f =
+  [ Leg with instrument = f.cBTC, delta = -1.2, execPrice = 60000.0
+  , Leg with instrument = f.cETH, delta = 36.0, execPrice = 2000.0 ]
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- The mandate admits a rebalance that obeys it.
+-- ─────────────────────────────────────────────────────────────────────────────
+policyAdmitsACompliantRebalance : Script ()
+policyAdmitsACompliantRebalance = script do
+  f <- setup 0.8
+
+  recCid <- submit (actAs f.manager <> readAs f.vault) do
+    exerciseCmd f.mandate ValidateRebalance with
+      holdingCids = [f.hBtc, f.hEth], oraclePrices = f.prices
+      legs = goodLegs f, investors = [f.alice], lastRebalance = None
+
+  -- The investor receives the proof.
+  proofs <- query @ComplianceRecord f.alice
+  length proofs === 1
+  let [(cid, proof)] = proofs
+  cid === recCid
+  proof.mandateVersion === 1        -- tamper-evidence: which mandate was enforced
+  proof.navBefore === 1080000.0
+  proof.legCount === 2
+
+  -- ...and the proof discloses no mandate parameter. There is nothing on this contract to
+  -- read a target weight, a band, or a traded instrument off.
+  proof.navAfter === 1080000.0      -- a rebalance reallocates; it does not change NAV
+
+  pure ()
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Nine ways to deviate. None of them commit.
+-- ─────────────────────────────────────────────────────────────────────────────
+policyRefusesEveryDeviation : Script ()
+policyRefusesEveryDeviation = script do
+  f <- setup 0.8
+  let asManager = actAs f.manager <> readAs f.vault
+      holdings  = [f.hBtc, f.hEth]
+      validate legs lastRebalance = exerciseCmd f.mandate ValidateRebalance with
+        holdingCids = holdings, oraclePrices = f.prices, legs, investors = [f.alice], lastRebalance
+
+  -- 1. Trading before the band is breached. An unconstrained manager would most like to skip
+  --    this one: a fund that trades on a predictable schedule is a predictable fund.
+  --    (Here the basket is already drifted, so we prove the inverse in `policyRefusesChurn`.)
+
+  -- 2. An instrument outside the mandate universe.
+  submitMustFail asManager do
+    validate [ Leg with instrument = f.cBTC, delta = -1.2, execPrice = 60000.0
+             , Leg with instrument = f.cUSD, delta = 72000.0, execPrice = 1.0 ] None
+
+  -- 3. An execution price away from the oracle — handing value to a friendly counterparty.
+  submitMustFail asManager do
+    validate [ Leg with instrument = f.cBTC, delta = -1.2, execPrice = 54000.0
+             , Leg with instrument = f.cETH, delta = 36.0, execPrice = 2000.0 ] None
+
+  -- 4. Not self-financing: sell 1.2 cBTC, buy only 10 cETH, walk out with the difference.
+  submitMustFail asManager do
+    validate [ Leg with instrument = f.cBTC, delta = -1.2, execPrice = 60000.0
+             , Leg with instrument = f.cETH, delta = 10.0, execPrice = 2000.0 ] None
+
+  -- 5. Under-trading: legs that leave the basket still outside the band.
+  submitMustFail asManager do
+    validate [ Leg with instrument = f.cBTC, delta = -0.2, execPrice = 60000.0
+             , Leg with instrument = f.cETH, delta = 6.0, execPrice = 2000.0 ] None
+
+  -- 6. Selling more than the fund holds.
+  submitMustFail asManager do
+    validate [ Leg with instrument = f.cBTC, delta = -20.0, execPrice = 60000.0
+             , Leg with instrument = f.cETH, delta = 600.0, execPrice = 2000.0 ] None
+
+  -- 7. The same instrument twice, to slip an extra sale past the netting.
+  submitMustFail asManager do
+    validate [ Leg with instrument = f.cBTC, delta = -1.2, execPrice = 60000.0
+             , Leg with instrument = f.cBTC, delta = -1.0, execPrice = 60000.0
+             , Leg with instrument = f.cETH, delta = 66.0, execPrice = 2000.0 ] None
+
+  -- 8. A rebalance that trades nothing, to mint a compliance proof out of thin air.
+  submitMustFail asManager do validate [] None
+
+  -- 9. Rebalancing again inside the cadence floor — the fund rebalanced just now, and the
+  --    mandate's floor is an hour.
+  now <- getTime
+  submitMustFail asManager do validate (goodLegs f) (Some now)
+
+  -- The baseline still passes, so none of the above failed for an unrelated reason.
+  _ <- submit asManager do validate (goodLegs f) None
+  pure ()
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- A basket already at target cannot be traded at all.
+-- ─────────────────────────────────────────────────────────────────────────────
+policyRefusesChurn : Script ()
+policyRefusesChurn = script do
+  manager <- allocateParty "Manager"
+  vault   <- allocateParty "BallastVault"
+  alice   <- allocateParty "Alice"
+  btcReg  <- allocateParty "cBTC-Registry"
+  ethReg  <- allocateParty "cETH-Registry"
+
+  let cBTC = InstrumentId with admin = btcReg, id = "cBTC"
+      cETH = InstrumentId with admin = ethReg, id = "cETH"
+      prices = [(cBTC, 60000.0), (cETH, 2000.0)]
+      targets = [ TargetWeight with instrument = cBTC, target = 0.6
+                , TargetWeight with instrument = cETH, target = 0.4 ]
+
+  mandate <- submit (actAs [manager, vault]) do createCmd Mandate with manager, vault, fundId = "BALLAST-01", version = 1, targets, driftBand = 0.05, maxWeight = 0.8, minRebalanceGap = hours 1, priceTolerance = 0.01
+
+  -- 12 cBTC = 720,000 and 240 cETH = 480,000 → NAV 1,200,000, exactly 60/40.
+  hBtcT <- submit (actAs [btcReg, vault]) do createCmd TestHolding with admin = btcReg, owner = vault, instrumentId = cBTC, amount = 12.0
+  hEthT <- submit (actAs [ethReg, vault]) do createCmd TestHolding with admin = ethReg, owner = vault, instrumentId = cETH, amount = 240.0
+
+  submitMustFail (actAs manager <> readAs vault) do
+    exerciseCmd mandate ValidateRebalance with
+      holdingCids = [toInterfaceContractId @Holding hBtcT, toInterfaceContractId @Holding hEthT]
+      oraclePrices = prices
+      legs = [ Leg with instrument = cBTC, delta = -1.0, execPrice = 60000.0
+             , Leg with instrument = cETH, delta = 30.0, execPrice = 2000.0 ]
+      investors = [alice], lastRebalance = None
+  pure ()
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- The concentration cap binds even on an otherwise perfect rebalance.
+-- ─────────────────────────────────────────────────────────────────────────────
+policyEnforcesConcentrationCap : Script ()
+policyEnforcesConcentrationCap = script do
+  -- Cap of 55% against a 60% target: the mandate is deliberately self-contradictory so the
+  -- cap is tested in isolation, with every other rule satisfied.
+  f <- setup 0.55
+  submitMustFail (actAs f.manager <> readAs f.vault) do
+    exerciseCmd f.mandate ValidateRebalance with
+      holdingCids = [f.hBtc, f.hEth], oraclePrices = f.prices
+      legs = goodLegs f, investors = [f.alice], lastRebalance = None
+  pure ()
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- The disclosure claim: investors verify without seeing.
+-- ─────────────────────────────────────────────────────────────────────────────
+mandateIsInvisibleToInvestors : Script ()
+mandateIsInvisibleToInvestors = script do
+  f <- setup 0.8
+
+  _ <- submit (actAs f.manager <> readAs f.vault) do
+    exerciseCmd f.mandate ValidateRebalance with
+      holdingCids = [f.hBtc, f.hEth], oraclePrices = f.prices
+      legs = goodLegs f, investors = [f.alice], lastRebalance = None
+
+  bounds <- submit (actAs [f.manager, f.vault]) do createCmd MandateBounds with manager = f.manager, vault = f.vault, fundId = "BALLAST-01", version = 1, universe = [f.cBTC, f.cETH], driftBand = 0.05, maxWeight = 0.8, minRebalanceGap = hours 1, investors = [f.alice]
+
+  -- THE CLAIM: the investor holds the fund to the rules without being able to read them.
+  aMandate <- query @Mandate f.alice
+  aBounds  <- query @MandateBounds f.alice
+  aProof   <- query @ComplianceRecord f.alice
+  aHold    <- queryInterface @Holding f.alice
+  length aMandate === 0   -- the target weights are invisible...
+  length aBounds  === 1   -- ...but the bounds are not...
+  length aProof   === 1   -- ...and neither is the proof the weights were obeyed.
+  length aHold    === 0   -- and the portfolio stays invisible throughout.
+
+  let [(_, b)] = aBounds
+  b.driftBand === 0.05
+  b.version === 1         -- same version the proof cites, so an amendment would show
+
+  pure ()
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- The proof cannot be forged. This is the security model, tested.
+-- ─────────────────────────────────────────────────────────────────────────────
+complianceProofIsUnforgeable : Script ()
+complianceProofIsUnforgeable = script do
+  f <- setup 0.8
+  now <- getTime
+
+  -- The manager alone cannot mint a compliance proof: ComplianceRecord is signed by manager
+  -- AND vault, and the manager does not hold CanActAs on the vault. Vault authority reaches a
+  -- transaction only through a choice the vault has signed — which is the validated one.
+  submitMustFail f.manager do
+    createCmd ComplianceRecord with
+      manager = f.manager, vault = f.vault, fundId = "BALLAST-01", mandateVersion = 1
+      rebalancedAt = now, navBefore = 1080000.0, navAfter = 1080000.0
+      legCount = 2, investors = [f.alice]
+
+  -- Nor can it rewrite the mandate alone to make a deviation legal after the fact.
+  submitMustFail f.manager do
+    createCmd Mandate with
+      manager = f.manager, vault = f.vault, fundId = "BALLAST-01", version = 2
+      targets = [TargetWeight with instrument = f.cBTC, target = 1.0]
+      driftBand = 0.05, maxWeight = 1.0, minRebalanceGap = hours 1, priceTolerance = 0.01
+  pure ()

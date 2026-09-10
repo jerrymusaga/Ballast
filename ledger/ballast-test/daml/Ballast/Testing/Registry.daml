@@ -1,0 +1,37 @@
+-- TEST SCAFFOLDING ONLY — not part of the Ballast product.
+--
+-- Ballast never defines its own notion of an asset. The vault is written against the real
+-- Canton Token Standard interface, `Splice.Api.Token.HoldingV1.Holding`, so on DevNet it
+-- holds whatever a real registry issued — real cBTC, cETH, USDCx.
+--
+-- But a Daml Script test cannot reach DevNet's registries, so *something* local has to issue
+-- holdings. That is all this module is: a minimal issuer that implements the same interface.
+-- The INTERFACE is real; only the issuer is local. Nothing in Ballast.Vault or Ballast.Spike
+-- refers to this template — they only ever see `ContractId Holding`, which is exactly what
+-- they will see against the real cBTC registry.
+module Ballast.Testing.Registry where
+
+import Splice.Api.Token.HoldingV1
+import Splice.Api.Token.MetadataV1 (emptyMetadata)
+
+-- Note the signatories: `admin, owner`. The instrument admin co-signs every holding it
+-- issues, because it must be able to authorise transfers of it. That is not a quirk of this
+-- test registry — it is inherent to how a registry administers an instrument, and it is why
+-- README's threat model says the registry sees the fund's holdings of its own instrument.
+template TestHolding
+  with
+    admin        : Party
+    owner        : Party
+    instrumentId : InstrumentId
+    amount       : Decimal
+  where
+    signatory admin, owner
+    ensure amount > 0.0
+
+    interface instance Holding for TestHolding where
+      view = HoldingView with
+        owner
+        instrumentId
+        amount
+        lock = None
+        meta = emptyMetadata
