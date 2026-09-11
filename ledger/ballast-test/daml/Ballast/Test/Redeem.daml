@@ -1,0 +1,197 @@
+-- Ballast — investors getting out.
+--
+-- The mirror of the subscription property: redeeming must leave everyone still invested
+-- exactly where they were. Value the fund after the payout has already left and the redeemer
+-- is paid out of a smaller fund than the one they were entitled to a share of, with the
+-- difference quietly coming out of the people who stayed.
+module Ballast.Test.Redeem where
+
+import Daml.Script
+import DA.Assert ((===))
+import DA.Time (hours, addRelTime)
+import Splice.Api.Token.AllocationInstructionV1
+import Splice.Api.Token.AllocationV1
+import Splice.Api.Token.HoldingV1
+import Splice.Api.Token.MetadataV1
+
+import Ballast.Fund
+import Ballast.Oracle
+import Ballast.Redemption
+import Ballast.Subscription
+import Ballast.Vault
+import Ballast.Testing.Registry
+
+data Rig = Rig
+  with
+    manager    : Party
+    vault      : Party
+    alice      : Party
+    bob        : Party
+    oracle     : Party
+    btcReg     : Party
+    cBTC       : InstrumentId
+    cETH       : InstrumentId
+    fund       : ContractId Fund
+    index      : ContractId VaultIndex
+    priceSet   : ContractId PriceSet
+    units      : ContractId UnitLedger
+    alicePos   : ContractId Position
+    bobPos     : ContractId Position
+    vaultBtc   : ContractId Holding
+    btcFactory : ContractId AllocationFactory
+    settle     : SettlementInfo
+
+-- Fund holds 12 cBTC @ 60,000 + 180 cETH @ 2,000 = NAV 1,080,000 against 1,080 units, so a
+-- unit is worth exactly 1,000. Alice holds 120 of them, Bob 960.
+-- Alice redeems 60 units = 60,000 of value = 1.0 cBTC. The fund is then 11 cBTC + 180 cETH =
+-- 1,020,000 against 1,020 units — still 1,000 a unit.
+rig : Text -> Script Rig
+rig settlementRef = script do
+  manager <- allocateParty "Manager"
+  vault   <- allocateParty "BallastVault"
+  alice   <- allocateParty "Alice"
+  bob     <- allocateParty "Bob"
+  oracle  <- allocateParty "PriceOracle"
+  btcReg  <- allocateParty "cBTC-Registry"
+  ethReg  <- allocateParty "cETH-Registry"
+
+  let cBTC = InstrumentId with admin = btcReg, id = "cBTC"
+      cETH = InstrumentId with admin = ethReg, id = "cETH"
+      prices = [(cBTC, 60000.0), (cETH, 2000.0)]
+
+  fund <- submit (actAs [manager, vault]) do createCmd Fund with manager, vault, fundId = "BALLAST-01", oracle, maxPriceAge = hours 1, accepted = [cBTC], payout = cBTC, investors = [alice, bob]
+
+  vBtc <- submit (actAs [btcReg, vault]) do createCmd TestHolding with admin = btcReg, owner = vault, instrumentId = cBTC, amount = 12.0
+  vEth <- submit (actAs [ethReg, vault]) do createCmd TestHolding with admin = ethReg, owner = vault, instrumentId = cETH, amount = 180.0
+
+  btcFactoryT <- submit btcReg do createCmd TestAllocationFactory with admin = btcReg, users = [vault, alice, bob, manager]
+
+  index <- submit (actAs [manager, vault]) do createCmd VaultIndex with manager, vault, fundId = "BALLAST-01", holdings = [toInterfaceContractId vBtc, toInterfaceContractId vEth], pending = []
+  units <- submit (actAs [manager, vault]) do createCmd UnitLedger with manager, vault, fundId = "BALLAST-01", totalUnits = 1080.0
+  alicePos <- submit manager do createCmd Position with manager, investor = alice, fundId = "BALLAST-01", units = 120.0
+  bobPos   <- submit manager do createCmd Position with manager, investor = bob, fundId = "BALLAST-01", units = 960.0
+
+  now <- getTime
+  priceSet <- submit oracle do createCmd PriceSet with oracle, prices, asOf = now, consumers = [manager, vault]
+
+  let settle = SettlementInfo with
+        executor = manager
+        settlementRef = Reference with id = settlementRef, cid = None
+        requestedAt = now
+        allocateBefore = addRelTime now (hours 1)
+        settleBefore = addRelTime now (hours 2)
+        meta = emptyMetadata
+
+  pure Rig with
+    manager, vault, alice, bob, oracle, btcReg, cBTC, cETH, fund, index, priceSet, units
+    alicePos, bobPos, settle
+    vaultBtc = toInterfaceContractId vBtc
+    btcFactory = toInterfaceContractId btcFactoryT
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Redeeming leaves everyone who stayed exactly where they were.
+-- ─────────────────────────────────────────────────────────────────────────────
+redemptionDoesNotDiluteRemainingHolders : Script ()
+redemptionDoesNotDiluteRemainingHolders = script do
+  r <- rig "RED-001"
+
+  req <- submit r.alice do exerciseCmd r.fund RequestRedemption with investor = r.alice, units = 60.0
+  res <- submit (actAs r.manager <> readAs r.vault) do
+    exerciseCmd req AcceptRedemption with
+      vaultIndexCid = r.index, priceSetCid = r.priceSet, unitLedgerCid = r.units
+      positionCid = r.alicePos, factoryCid = r.btcFactory
+      payoutInputCids = [r.vaultBtc], settlement = r.settle
+
+  -- 60 units at 1,000 is 60,000 of value, which at 60,000 a coin is exactly one cBTC.
+  res.paidAmount === 1.0
+  res.paidInstrument === r.cBTC
+
+  -- Alice actually received it.
+  aHold <- queryInterface @Holding r.alice
+  let aliceHas i = sum [hv.amount | (_, Some hv) <- aHold, hv.instrumentId == i]
+  aliceHas r.cBTC === 1.0
+
+  -- THE PROPERTY: a unit is worth exactly what it was worth before Alice left.
+  nav <- submit (actAs r.manager <> readAs r.vault) do
+    exerciseCmd r.fund PublishNav with vaultIndexCid = res.newIndex, priceSetCid = r.priceSet
+  navs <- query @NavRecord r.bob
+  let [(_, n)] = filter (\(cid, _) -> cid == nav) navs
+  n.nav === 1020000.0
+  ul <- queryContractId r.manager res.unitLedger
+  case ul of
+    Some u -> do
+      u.totalUnits === 1020.0
+      n.nav / u.totalUnits === 1000.0   -- Bob is untouched
+    None -> assert False
+
+  -- Alice keeps the units she did not redeem.
+  aPos <- query @Position r.alice
+  length aPos === 1
+  let [(_, p)] = aPos
+  p.units === 60.0
+
+  -- And having taken money out, she still cannot see what the fund holds.
+  aIdx <- query @VaultIndex r.alice
+  length aIdx === 0
+  aAll <- queryInterface @Holding r.alice
+  -- only her own payout, never the fund's basket
+  length aAll === 1
+
+  pure ()
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Redeeming everything closes the position rather than leaving an empty one.
+-- ─────────────────────────────────────────────────────────────────────────────
+fullRedemptionClosesThePosition : Script ()
+fullRedemptionClosesThePosition = script do
+  r <- rig "RED-001"
+  req <- submit r.alice do exerciseCmd r.fund RequestRedemption with investor = r.alice, units = 120.0
+  res <- submit (actAs r.manager <> readAs r.vault) do
+    exerciseCmd req AcceptRedemption with
+      vaultIndexCid = r.index, priceSetCid = r.priceSet, unitLedgerCid = r.units
+      positionCid = r.alicePos, factoryCid = r.btcFactory
+      payoutInputCids = [r.vaultBtc], settlement = r.settle
+
+  res.paidAmount === 2.0          -- 120 units at 1,000, in 60,000 coins
+  res.position === None
+  aPos <- query @Position r.alice
+  length aPos === 0               -- no empty husk left behind
+  pure ()
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Redemptions the fund must refuse.
+-- ─────────────────────────────────────────────────────────────────────────────
+redemptionRefusesTheDishonest : Script ()
+redemptionRefusesTheDishonest = script do
+  r <- rig "RED-001"
+
+  let accept req pos ps = exerciseCmd req AcceptRedemption with
+        vaultIndexCid = r.index, priceSetCid = ps, unitLedgerCid = r.units
+        positionCid = pos, factoryCid = r.btcFactory
+        payoutInputCids = [r.vaultBtc], settlement = r.settle
+      asManager = actAs r.manager <> readAs r.vault
+
+  -- 1. Redeeming more units than the investor holds.
+  tooMany <- submit r.alice do exerciseCmd r.fund RequestRedemption with investor = r.alice, units = 500.0
+  submitMustFail asManager do accept tooMany r.alicePos r.priceSet
+
+  -- 2. Paying Alice out against BOB's position. Without this the manager could drain one
+  --    investor's stake to satisfy another's redemption.
+  aliceReq <- submit r.alice do exerciseCmd r.fund RequestRedemption with investor = r.alice, units = 60.0
+  submitMustFail asManager do accept aliceReq r.bobPos r.priceSet
+
+  -- 3. A stale price set. A redemption priced off an old NAV moves value between the
+  --    redeemer and everyone who stayed, in whichever direction the market went.
+  now <- getTime
+  stalePs <- submit r.oracle do createCmd PriceSet with oracle = r.oracle, prices = [(r.cBTC, 60000.0), (r.cETH, 2000.0)], asOf = addRelTime now (hours (-3)), consumers = [r.manager, r.vault]
+  submitMustFail asManager do accept aliceReq r.alicePos stalePs
+
+  -- 4. An investor cannot redeem out of someone else's name.
+  submitMustFail r.bob do exerciseCmd r.fund RequestRedemption with investor = r.alice, units = 10.0
+
+  -- 5. The manager cannot withdraw a request the investor made.
+  submitMustFail r.manager do exerciseCmd aliceReq WithdrawRedemption
+
+  -- The honest redemption still works.
+  _ <- submit asManager do accept aliceReq r.alicePos r.priceSet
+  pure ()

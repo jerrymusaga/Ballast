@@ -1,0 +1,142 @@
+-- Ballast — investors getting out.
+--
+-- ┌─ WHY REDEMPTION IS IN CASH, NOT IN KIND ───────────────────────────────────────────────┐
+-- │ The standard ETF mechanism hands a redeemer a pro-rata slice of the actual basket. It   │
+-- │ is elegant and tax-efficient, and here it would be fatal: a pro-rata slice of the       │
+-- │ basket IS the basket. Anyone could subscribe, redeem in kind, and read the exact target │
+-- │ weights off what they received — defeating the entire product for the price of one      │
+-- │ round trip.                                                                             │
+-- │                                                                                         │
+-- │ So the fund pays out in ONE settlement instrument. This costs real efficiency and it is │
+-- │ the correct trade. If in-kind is ever needed for scale it has to go through a proxy     │
+-- │ basket, which is exactly the trusted machinery this design exists to remove.            │
+-- └────────────────────────────────────────────────────────────────────────────────────────┘
+--
+-- Like a subscription, the whole exchange is one transaction: units are cancelled and assets
+-- delivered together, or neither happens.
+module Ballast.Redemption where
+
+import DA.List (dedup)
+import DA.Time (RelTime)
+import Splice.Api.Token.AllocationInstructionV1 (AllocationFactory)
+import Splice.Api.Token.AllocationV1
+import Splice.Api.Token.HoldingV1
+import Splice.Api.Token.MetadataV1
+
+import Ballast.Oracle
+import Ballast.Subscription
+import Ballast.Valuation
+import Ballast.Vault
+
+data RedemptionResult = RedemptionResult
+  with
+    position     : Optional (ContractId Position)  -- None when the investor redeemed in full
+    unitLedger   : ContractId UnitLedger
+    newIndex     : ContractId VaultIndex
+    paidAmount   : Decimal
+    paidInstrument : InstrumentId
+  deriving (Eq, Show)
+
+-- | A redemption the fund has pre-authorised, awaiting the manager's execution.
+--
+-- Signed by all three parties for the same reason a subscription is: paying the investor out
+-- of the vault needs manager, vault AND investor authority at once, and the manager must
+-- never be able to act as the vault. See Ballast.Subscription.
+template RedemptionRequest
+  with
+    manager     : Party
+    vault       : Party
+    investor    : Party
+    fundId      : Text
+    oracle      : Party
+    maxPriceAge : RelTime
+    payout      : InstrumentId   -- the fund's settlement instrument
+    units       : Decimal
+  where
+    signatory manager, vault, investor
+    ensure units > 0.0
+
+    -- | The investor can always walk away before the manager acts.
+    choice WithdrawRedemption : ()
+      controller investor
+      do pure ()
+
+    -- | Value the fund, cancel the units, deliver the payout. One transaction.
+    choice AcceptRedemption : RedemptionResult
+      with
+        vaultIndexCid   : ContractId VaultIndex
+        priceSetCid     : ContractId PriceSet
+        unitLedgerCid   : ContractId UnitLedger
+        positionCid     : ContractId Position
+        factoryCid      : ContractId AllocationFactory
+        payoutInputCids : [ContractId Holding]
+        settlement      : SettlementInfo
+      controller manager
+      do
+        prices <- freshPrices priceSetCid oracle maxPriceAge
+
+        -- Valued BEFORE anything leaves, for the mirror of the reason a subscription is
+        -- valued before anything arrives: the redeemer must be paid out of the fund as it
+        -- stood, not as it stands once their own payout has been deducted from it.
+        qs <- portfolioOf vaultIndexCid vault fundId
+        navBefore <- navOf prices qs
+
+        ul <- fetch unitLedgerCid
+        assertMsg "unit ledger belongs to a different fund"
+          (ul.fundId == fundId && ul.vault == vault && ul.manager == manager)
+        assertMsg "no units are in issue" (ul.totalUnits > 0.0)
+        assertMsg "cannot redeem more units than exist" (units <= ul.totalUnits)
+
+        pos <- fetch positionCid
+        assertMsg "that position belongs to someone else"
+          (pos.investor == investor && pos.fundId == fundId && pos.manager == manager)
+        assertMsg "cannot redeem more units than the investor holds" (units <= pos.units)
+
+        let navPerUnit = navBefore / ul.totalUnits
+            payoutValue = units * navPerUnit
+        payoutPrice <- priceOf prices payout
+        let payoutAmount = payoutValue / payoutPrice
+        assertMsg "redemption is too small to pay out" (payoutAmount > 0.0)
+
+        assertMsg "the payout leg must come from this fund's vault"
+          (settlement.executor == manager)
+
+        -- Reserve the payout and deliver it in the same transaction. The index moves twice:
+        -- once when the assets are reserved, once when they leave.
+        alloc <- exercise vaultIndexCid AllocateFromVault with
+          factoryCid
+          expectedAdmin = payout.admin
+          allocation = AllocationSpecification with
+            settlement
+            transferLegId = "redemption"
+            transferLeg = TransferLeg with
+              sender = vault, receiver = investor, amount = payoutAmount
+              instrumentId = payout, meta = emptyMetadata
+          inputHoldingCids = payoutInputCids
+
+        _ <- exercise alloc.allocationCid Allocation_ExecuteTransfer with
+          extraArgs = ExtraArgs with context = emptyChoiceContext, meta = emptyMetadata
+
+        -- The reservation is settled, so it is no longer pending; the change the registry
+        -- returned when reserving is already in the index that AllocateFromVault produced.
+        idx <- fetch alloc.newIndex
+        archive alloc.newIndex
+        newIndex <- create VaultIndex with
+          manager, vault, fundId
+          holdings = dedup idx.holdings
+          pending = filter (\c -> c /= alloc.allocationCid) idx.pending
+
+        archive unitLedgerCid
+        unitLedger <- create UnitLedger with
+          manager, vault, fundId, totalUnits = ul.totalUnits - units
+
+        archive positionCid
+        position <-
+          if units == pos.units
+            then pure None
+            else Some <$> create Position with
+              manager, investor, fundId, units = pos.units - units
+
+        pure RedemptionResult with
+          position, unitLedger, newIndex
+          paidAmount = payoutAmount, paidInstrument = payout

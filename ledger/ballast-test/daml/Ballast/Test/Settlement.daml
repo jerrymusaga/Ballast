@@ -66,7 +66,7 @@ rig settlementRef = script do
                 , TargetWeight with instrument = cETH, target = 0.4 ]
 
   mandate <- submit (actAs [manager, vault]) do createCmd Mandate with manager, vault, fundId = "BALLAST-01", version = 1, targets, driftBand = 0.05, maxWeight = 0.8, minRebalanceGap = hours 1, priceTolerance = 0.01
-  fund    <- submit (actAs [manager, vault]) do createCmd Fund with manager, vault, fundId = "BALLAST-01", oracle, maxPriceAge = hours 1, accepted = [cBTC, cETH], investors = [alice]
+  fund    <- submit (actAs [manager, vault]) do createCmd Fund with manager, vault, fundId = "BALLAST-01", oracle, maxPriceAge = hours 1, accepted = [cBTC, cETH], payout = cBTC, investors = [alice]
 
   vaultBtcT <- submit (actAs [btcReg, vault]) do createCmd TestHolding with admin = btcReg, owner = vault, instrumentId = cBTC, amount = 12.0
   vaultEthT <- submit (actAs [ethReg, vault]) do createCmd TestHolding with admin = ethReg, owner = vault, instrumentId = cETH, amount = 180.0

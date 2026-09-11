@@ -13,6 +13,7 @@ import DA.Time (RelTime)
 import Splice.Api.Token.HoldingV1 (InstrumentId)
 
 import Ballast.Oracle
+import Ballast.Redemption
 import Ballast.Subscription
 import Ballast.Valuation
 import Ballast.Vault
@@ -42,6 +43,7 @@ template Fund
     oracle      : Party   -- the only pricing source this fund will accept
     maxPriceAge : RelTime -- how stale a price set may be before it is refused
     accepted    : [InstrumentId] -- what the fund takes as subscription
+    payout      : InstrumentId   -- the single instrument it redeems in; see Ballast.Redemption
     investors   : [Party]
   where
     signatory manager, vault
@@ -92,3 +94,16 @@ template Fund
         create SubscriptionRequest with
           manager, vault, investor, fundId, oracle, maxPriceAge
           accepted, settlementRef
+
+    -- | An investor registers a redemption. Three signatures, for the same reason a
+    -- subscription needs them: paying out of the vault needs the vault's authority, and the
+    -- manager must never be able to supply it alone.
+    nonconsuming choice RequestRedemption : ContractId RedemptionRequest
+      with
+        investor : Party
+        units    : Decimal
+      controller investor
+      do
+        assertMsg "not an investor in this fund" (investor `elem` investors)
+        create RedemptionRequest with
+          manager, vault, investor, fundId, oracle, maxPriceAge, payout, units

@@ -62,7 +62,7 @@ setup maxWeight = do
   let hBtc = toInterfaceContractId @Holding hBtcT
       hEth = toInterfaceContractId @Holding hEthT
 
-  fund  <- submit (actAs [manager, vault]) do createCmd Fund with manager, vault, fundId = "BALLAST-01", oracle, maxPriceAge = hours 1, accepted = [cBTC, cETH], investors = [alice]
+  fund  <- submit (actAs [manager, vault]) do createCmd Fund with manager, vault, fundId = "BALLAST-01", oracle, maxPriceAge = hours 1, accepted = [cBTC, cETH], payout = cBTC, investors = [alice]
   index <- submit (actAs [manager, vault]) do createCmd VaultIndex with manager, vault, fundId = "BALLAST-01", holdings = [hBtc, hEth], pending = []
   now   <- getTime
   priceSet <- submit oracle do createCmd PriceSet with oracle, prices, asOf = now, consumers = [manager, vault]
@@ -184,7 +184,7 @@ policyRefusesChurn = script do
   hBtcT <- submit (actAs [btcReg, vault]) do createCmd TestHolding with admin = btcReg, owner = vault, instrumentId = cBTC, amount = 12.0
   hEthT <- submit (actAs [ethReg, vault]) do createCmd TestHolding with admin = ethReg, owner = vault, instrumentId = cETH, amount = 240.0
 
-  fund  <- submit (actAs [manager, vault]) do createCmd Fund with manager, vault, fundId = "BALLAST-01", oracle, maxPriceAge = hours 1, accepted = [cBTC, cETH], investors = [alice]
+  fund  <- submit (actAs [manager, vault]) do createCmd Fund with manager, vault, fundId = "BALLAST-01", oracle, maxPriceAge = hours 1, accepted = [cBTC, cETH], payout = cBTC, investors = [alice]
   index <- submit (actAs [manager, vault]) do createCmd VaultIndex with manager, vault, fundId = "BALLAST-01", holdings = [toInterfaceContractId @Holding hBtcT, toInterfaceContractId @Holding hEthT], pending = []
   now   <- getTime
   ps    <- submit oracle do createCmd PriceSet with oracle, prices, asOf = now, consumers = [manager, vault]

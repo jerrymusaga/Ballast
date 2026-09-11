@@ -116,8 +116,10 @@ Canton makes it *cheap and native*, not that it is the only place it is *conceiv
    the fund's, so reserving does not move NAV or erase the drift that justified the trade.
 5. The **policy contract validates it on-ledger** against the private mandate — the manager cannot
    deviate, and the trade does not commit if it would.
-6. Assets move atomically via CIP-56 transfer/allocation. Investors get proof of compliance; the
+6. Assets move atomically via CIP-56 allocation. Investors get proof of compliance; the
    market saw nothing.
+7. Investors redeem in cash, never in kind — a pro-rata slice of the basket *is* the basket,
+   and handing one over would defeat the product for the price of a single round trip.
 
 ## Design principles
 
@@ -142,6 +144,7 @@ ledger/
     Mandate       the private strategy, and the policy that enforces it
     Settlement    the executor — validates, settles both legs, reindexes, atomically
     Subscription  units, positions, and taking delivery of a deposit
+    Redemption    cancelling units and paying out, in cash and never in kind
   ballast-test/   the test registry + proofs — never deployed
 ```
 
@@ -167,7 +170,7 @@ not on the DevNet where real cBTC and cETH exist. Targeting v2 would mean holdin
 cd ledger && daml build --all && cd ballast-test && daml test
 ```
 
-Proven so far, on **real CIP-56 `Holding` and `Allocation` interface contracts**, in 16 scripts:
+Proven so far, on **real CIP-56 `Holding` and `Allocation` interface contracts**, in 19 scripts:
 
 - **`fourLenses`** — a NAV computed from holdings is disclosed to investors who cannot see
   those holdings; the market sees nothing; the two instrument registries each see only their
@@ -202,6 +205,11 @@ Proven so far, on **real CIP-56 `Holding` and `Allocation` interface contracts**
   much. Plus four refused deposits — someone else's money, a deposit payable elsewhere, a
   stale price set, and an instrument the fund never agreed to accept — and an investor who can
   always withdraw a request the manager has not acted on.
+- **`redemptionDoesNotDiluteRemainingHolders`** — the mirror property: the fund is valued
+  before the payout leaves, so everyone who stayed is untouched. Redeeming in full closes the
+  position rather than leaving an empty one, and the fund refuses to redeem more units than an
+  investor holds, to pay one investor against another's position, to price off a stale NAV, or
+  to let anyone request a redemption in someone else's name.
 
 ### What is deliberately still not claimed
 
@@ -221,4 +229,4 @@ Proven so far, on **real CIP-56 `Holding` and `Allocation` interface contracts**
 - **NAV still leaks the portfolio, slowly.** Nothing above changes the linear algebra. Breadth,
   cadence and rounding remain the dials.
 
-Not built yet: redemption, and the keeper.
+Not built yet: the keeper.

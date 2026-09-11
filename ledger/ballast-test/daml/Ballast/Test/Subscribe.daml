@@ -57,7 +57,7 @@ rig settlementRef = script do
       cETH = InstrumentId with admin = ethReg, id = "cETH"
       prices = [(cBTC, 60000.0), (cETH, 2000.0)]
 
-  fund <- submit (actAs [manager, vault]) do createCmd Fund with manager, vault, fundId = "BALLAST-01", oracle, maxPriceAge = hours 1, accepted = [cBTC], investors = [alice, bob]
+  fund <- submit (actAs [manager, vault]) do createCmd Fund with manager, vault, fundId = "BALLAST-01", oracle, maxPriceAge = hours 1, accepted = [cBTC], payout = cBTC, investors = [alice, bob]
 
   vBtc <- submit (actAs [btcReg, vault]) do createCmd TestHolding with admin = btcReg, owner = vault, instrumentId = cBTC, amount = 12.0
   vEth <- submit (actAs [ethReg, vault]) do createCmd TestHolding with admin = ethReg, owner = vault, instrumentId = cETH, amount = 180.0
