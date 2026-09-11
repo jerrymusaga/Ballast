@@ -50,7 +50,26 @@ Formation is the one exception: creating the `Fund` and `Mandate` genuinely need
 signature. Provisioning grants it, and `npm run provision:formation-done` checks it has since
 been dropped, failing loudly if it has not.
 
+## Bringing a fund up
+
+    npm run provision:plan          # upload the DAR, allocate parties, grant rights
+    npm run provision:apply
+    npm run inspect -- <party>      # what does that party actually see?
+    npm run formation -- --plan     # create the Fund, Mandate, bounds, ledger, index
+    npm run formation -- --apply
+    npm run provision:formation-done   # confirm the vault's actAs grant is gone
+
+`inspect` is the three-lens demo and is deliberately not a UI trick: it makes one
+active-contract-set call per party and prints what comes back. The filtering is Canton's,
+enforced by the protocol — this program does not have the option of showing more. It is also
+how you find real instruments, since it prints the `InstrumentId` of any CIP-56 holding a party
+owns, including the registry's party id.
+
+Formation needs `CBTC_ADMIN` and `CETH_ADMIN` in `.env`: the registry parties of the *real*
+instruments on the target network. Read them off an actual holding with `inspect` rather than
+guessing.
+
 ## Not built yet
 
-Submitting commands — the client does packages, parties and rights, not yet the command
-service — and the live price feed behind the oracle.
+The live price feed behind the oracle, and funding the vault with real assets — a fund that
+owns nothing is formed but not running.

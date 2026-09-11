@@ -11,6 +11,8 @@
     "test": "node --test --experimental-strip-types test/*.test.ts",
     "provision:plan": "node --env-file=.env --experimental-strip-types src/provision.ts --plan",
     "provision:apply": "node --env-file=.env --experimental-strip-types src/provision.ts --apply",
-    "provision:formation-done": "node --env-file=.env --experimental-strip-types src/provision.ts --apply --formation-done"
+    "provision:formation-done": "node --env-file=.env --experimental-strip-types src/provision.ts --apply --formation-done",
+    "inspect": "node --env-file=.env --experimental-strip-types src/inspect.ts",
+    "formation": "node --env-file=.env --experimental-strip-types src/formation.ts"
   }
 }
