@@ -1,0 +1,153 @@
+-- Ballast — investors buying in.
+--
+-- A subscription is a delivery-versus-payment in miniature: the investor hands over a real
+-- CIP-56 asset and receives units, and neither half may happen without the other. It is one
+-- transaction for that reason.
+--
+-- ┌─ WHERE THE AUTHORITY COMES FROM ───────────────────────────────────────────────────────┐
+-- │ Executing the investor's deposit needs all three of executor, sender and receiver —     │
+-- │ manager, investor and vault. Getting those into one transaction is not obvious, because │
+-- │ the manager must NOT be able to act as the vault (see Ballast.Mandate), and the vault    │
+-- │ cannot co-sign every investor's request in advance.                                     │
+-- │                                                                                         │
+-- │ The answer is that the request is born with all three signatures: an investor creates it │
+-- │ by exercising a choice on `Fund`, which the manager and vault have already signed. The   │
+-- │ fund contract is in effect the offering document — subscribing under it is what the      │
+-- │ manager and vault pre-authorised when they created it.                                  │
+-- └────────────────────────────────────────────────────────────────────────────────────────┘
+module Ballast.Subscription where
+
+import DA.List (dedup)
+import DA.Time (RelTime)
+import Splice.Api.Token.AllocationV1
+import Splice.Api.Token.HoldingV1
+import Splice.Api.Token.MetadataV1
+
+import Ballast.Oracle
+import Ballast.Valuation
+import Ballast.Vault
+
+-- | Units in issue. Separate from the portfolio because they are a claim ON it, not part of
+-- it: NAV per unit is the ratio between the two, and conflating them is how a fund ends up
+-- valuing its own liabilities as assets.
+template UnitLedger
+  with
+    manager    : Party
+    vault      : Party
+    fundId     : Text
+    totalUnits : Decimal
+  where
+    signatory manager, vault
+    ensure totalUnits >= 0.0
+
+-- | An investor's stake. Observed by that investor ALONE, so investors are invisible
+-- to each other.
+template Position
+  with
+    manager  : Party
+    investor : Party
+    fundId   : Text
+    units    : Decimal
+  where
+    signatory manager
+    observer investor
+    ensure units > 0.0
+
+data SubscriptionResult = SubscriptionResult
+  with
+    position    : ContractId Position
+    unitLedger  : ContractId UnitLedger
+    newIndex    : ContractId VaultIndex
+    unitsIssued : Decimal
+  deriving (Eq, Show)
+
+-- | A subscription the fund has pre-authorised, awaiting the manager's execution.
+--
+-- Signed by all three parties — see the note at the top of this module. The oracle terms are
+-- copied from the Fund at creation so this module does not need to depend on it.
+template SubscriptionRequest
+  with
+    manager       : Party
+    vault         : Party
+    investor      : Party
+    fundId        : Text
+    oracle        : Party
+    maxPriceAge   : RelTime
+    accepted      : [InstrumentId]  -- what this fund takes as subscription
+    settlementRef : Text
+  where
+    signatory manager, vault, investor
+
+    -- | The investor can always walk away before the manager acts. Without this a request
+    -- would be a one-way door, and the assets backing it are already reserved.
+    choice WithdrawSubscription : ()
+      controller investor
+      do pure ()
+
+    -- | Value the fund, issue units against the deposit, take delivery. One transaction.
+    choice AcceptSubscription : SubscriptionResult
+      with
+        vaultIndexCid  : ContractId VaultIndex
+        priceSetCid    : ContractId PriceSet
+        unitLedgerCid  : ContractId UnitLedger
+        depositCid     : ContractId Allocation
+        existingPosCid : Optional (ContractId Position)
+      controller manager
+      do
+        prices <- freshPrices priceSetCid oracle maxPriceAge
+
+        -- THE FUND IS VALUED BEFORE THE DEPOSIT LANDS. Issuing units at a NAV that already
+        -- includes the incoming money would hand the subscriber a share of their own deposit
+        -- and dilute everyone else by exactly that much.
+        qs <- portfolioOf vaultIndexCid vault fundId
+        navBefore <- navOf prices qs
+
+        ul <- fetch unitLedgerCid
+        assertMsg "unit ledger belongs to a different fund"
+          (ul.fundId == fundId && ul.vault == vault && ul.manager == manager)
+
+        -- At inception there is nothing to divide by, so a unit is worth one unit of account.
+        let navPerUnit = if ul.totalUnits == 0.0 then 1.0 else navBefore / ul.totalUnits
+        assertMsg "fund has units in issue but no value" (navPerUnit > 0.0)
+
+        av <- view <$> fetch depositCid
+        let leg = av.allocation.transferLeg
+        assertMsg "deposit is not from this investor" (leg.sender == investor)
+        assertMsg "deposit is not payable to this fund" (leg.receiver == vault)
+        assertMsg "deposit names a different executor" (av.allocation.settlement.executor == manager)
+        assertMsg "deposit belongs to a different settlement"
+          (av.allocation.settlement.settlementRef.id == settlementRef)
+        assertMsg ("this fund does not accept " <> leg.instrumentId.id <> " as subscription")
+          (leg.instrumentId `elem` accepted)
+
+        depositPrice <- priceOf prices leg.instrumentId
+        let depositValue = leg.amount * depositPrice
+            units = depositValue / navPerUnit
+        assertMsg "deposit is too small to issue a unit" (units > 0.0)
+
+        res <- exercise depositCid Allocation_ExecuteTransfer with
+          extraArgs = ExtraArgs with context = emptyChoiceContext, meta = emptyMetadata
+
+        idx <- fetch vaultIndexCid
+        archive vaultIndexCid
+        newIndex <- create VaultIndex with
+          manager, vault, fundId
+          holdings = dedup (idx.holdings <> res.receiverHoldingCids)
+          pending = idx.pending
+
+        archive unitLedgerCid
+        unitLedger <- create UnitLedger with
+          manager, vault, fundId, totalUnits = ul.totalUnits + units
+
+        -- Top up an existing holding rather than leaving the investor with two positions.
+        held <- case existingPosCid of
+          None -> pure 0.0
+          Some cid -> do
+            p <- fetch cid
+            assertMsg "that position belongs to someone else"
+              (p.investor == investor && p.fundId == fundId && p.manager == manager)
+            archive cid
+            pure p.units
+        position <- create Position with manager, investor, fundId, units = held + units
+
+        pure SubscriptionResult with position, unitLedger, newIndex, unitsIssued = units

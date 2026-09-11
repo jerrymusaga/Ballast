@@ -15,6 +15,7 @@ import DA.Time (hours, minutes, addRelTime)
 import Splice.Api.Token.HoldingV1
 
 import Ballast.Fund
+import Ballast.Subscription
 import Ballast.Oracle
 import Ballast.Vault
 import Ballast.Testing.Registry (TestHolding(..))
@@ -40,7 +41,7 @@ fourLenses = script do
       cBTC      = InstrumentId with admin = btcRegistry, id = "cBTC"
       cETH      = InstrumentId with admin = ethRegistry, id = "cETH"
 
-  fund <- submit (actAs [manager, vault]) do createCmd Fund with manager, vault, fundId, oracle, maxPriceAge = hours 1, investors
+  fund <- submit (actAs [manager, vault]) do createCmd Fund with manager, vault, fundId, oracle, maxPriceAge = hours 1, accepted = [cBTC, cETH], investors
 
   -- The portfolio: 12 cBTC + 300 cETH, issued by their registries to the fund's vault.
   hBtcT <- submit (actAs [btcRegistry, vault]) do createCmd TestHolding with admin = btcRegistry, owner = vault, instrumentId = cBTC, amount = 12.0
@@ -141,7 +142,7 @@ navRefusesBadInputs = script do
       cBTC   = InstrumentId with admin = btcRegistry, id = "cBTC"
       cETH   = InstrumentId with admin = ethRegistry, id = "cETH"
 
-  fund  <- submit (actAs [manager, vault]) do createCmd Fund with manager, vault, fundId, oracle, maxPriceAge = hours 1, investors = [alice]
+  fund  <- submit (actAs [manager, vault]) do createCmd Fund with manager, vault, fundId, oracle, maxPriceAge = hours 1, accepted = [cBTC, cETH], investors = [alice]
   hBtcT <- submit (actAs [btcRegistry, vault]) do createCmd TestHolding with admin = btcRegistry, owner = vault, instrumentId = cBTC, amount = 12.0
   hEthT <- submit (actAs [ethRegistry, vault]) do createCmd TestHolding with admin = ethRegistry, owner = vault, instrumentId = cETH, amount = 300.0
   let hBtc = toInterfaceContractId @Holding hBtcT

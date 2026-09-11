@@ -10,22 +10,12 @@
 module Ballast.Fund where
 
 import DA.Time (RelTime)
+import Splice.Api.Token.HoldingV1 (InstrumentId)
 
 import Ballast.Oracle
+import Ballast.Subscription
 import Ballast.Valuation
 import Ballast.Vault
-
--- An investor's stake. Observed by that investor ALONE, so investors are invisible
--- to each other.
-template Position
-  with
-    manager  : Party
-    investor : Party
-    fundId   : Text
-    units    : Decimal
-  where
-    signatory manager
-    observer investor
 
 -- The published NAV. Computed on-ledger from holdings the investor cannot see.
 --
@@ -51,6 +41,7 @@ template Fund
     fundId      : Text
     oracle      : Party   -- the only pricing source this fund will accept
     maxPriceAge : RelTime -- how stale a price set may be before it is refused
+    accepted    : [InstrumentId] -- what the fund takes as subscription
     investors   : [Party]
   where
     signatory manager, vault
@@ -78,3 +69,26 @@ template Fund
         nav    <- navOf prices qs
         asOf   <- getTime
         create NavRecord with manager, fundId, nav, asOf, investors
+
+    -- | An investor registers a subscription.
+    --
+    -- This lives on Fund rather than standing alone because of who needs to sign. Taking
+    -- delivery of the deposit later needs manager, vault AND investor authority in one
+    -- transaction, and the manager must never be able to act as the vault. Exercising a
+    -- choice on a contract the manager and vault have already signed is what supplies the
+    -- other two signatures — the fund contract acts as the offering document, and subscribing
+    -- under it is what they pre-authorised by creating it.
+    --
+    -- Note the consequence: an investor must already be an observer of the Fund to see it and
+    -- exercise this. That suits a fund with a known investor base. An open-ended offering
+    -- would need a separate, publicly visible contract to subscribe against.
+    nonconsuming choice RequestSubscription : ContractId SubscriptionRequest
+      with
+        investor      : Party
+        settlementRef : Text
+      controller investor
+      do
+        assertMsg "not an investor in this fund" (investor `elem` investors)
+        create SubscriptionRequest with
+          manager, vault, investor, fundId, oracle, maxPriceAge
+          accepted, settlementRef

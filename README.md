@@ -108,7 +108,8 @@ Canton makes it *cheap and native*, not that it is the only place it is *conceiv
 ## How it works
 
 1. A basket is defined over real CIP-56 instruments by `InstrumentId`, with private target weights.
-2. Investors subscribe; units are minted against real deposits. Positions are private per investor.
+2. Investors subscribe; units are issued against real deposits at the NAV that existed before
+   the money arrived, so nobody already invested is diluted. Positions are private per investor.
 3. Prices move and the basket drifts from its targets.
 4. When drift breaches the policy band, an off-ledger keeper proposes a rebalance. The fund
    and its counterparty each reserve their side with their own registry; reserved assets stay
@@ -140,6 +141,7 @@ ledger/
     Fund          NAV published from the index at oracle prices
     Mandate       the private strategy, and the policy that enforces it
     Settlement    the executor — validates, settles both legs, reindexes, atomically
+    Subscription  units, positions, and taking delivery of a deposit
   ballast-test/   the test registry + proofs — never deployed
 ```
 
@@ -165,7 +167,7 @@ not on the DevNet where real cBTC and cETH exist. Targeting v2 would mean holdin
 cd ledger && daml build --all && cd ballast-test && daml test
 ```
 
-Proven so far, on **real CIP-56 `Holding` and `Allocation` interface contracts**, in 12 scripts:
+Proven so far, on **real CIP-56 `Holding` and `Allocation` interface contracts**, in 16 scripts:
 
 - **`fourLenses`** — a NAV computed from holdings is disclosed to investors who cannot see
   those holdings; the market sees nothing; the two instrument registries each see only their
@@ -194,6 +196,12 @@ Proven so far, on **real CIP-56 `Holding` and `Allocation` interface contracts**
   the index cannot be spent, another party's assets cannot be offered as the fund's leg, and a
   reservation leaves the index exactly one holding lighter, one change holding heavier, and
   one reservation longer.
+- **`subscriptionDoesNotDiluteExistingHolders`** — the fund is valued *before* the deposit
+  lands, so NAV per unit is identical either side of a subscription. Valuing afterwards would
+  hand the subscriber a share of their own money and dilute everyone else by exactly that
+  much. Plus four refused deposits — someone else's money, a deposit payable elsewhere, a
+  stale price set, and an instrument the fund never agreed to accept — and an investor who can
+  always withdraw a request the manager has not acted on.
 
 ### What is deliberately still not claimed
 
@@ -213,4 +221,4 @@ Proven so far, on **real CIP-56 `Holding` and `Allocation` interface contracts**
 - **NAV still leaks the portfolio, slowly.** Nothing above changes the linear algebra. Breadth,
   cadence and rounding remain the dials.
 
-Not built yet: subscribe and redeem, and the keeper.
+Not built yet: redemption, and the keeper.

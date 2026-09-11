@@ -1,0 +1,275 @@
+-- Ballast — investors buying in.
+--
+-- The property that matters here is not that units get issued. It is that issuing them
+-- changes nothing for the people already invested: NAV per unit must be identical either
+-- side of a subscription. Get the ordering wrong — value the fund AFTER the deposit lands —
+-- and the new subscriber is handed a share of their own money while everyone else is diluted
+-- by exactly that much. It is a one-line mistake with a real victim, so it is tested first.
+module Ballast.Test.Subscribe where
+
+import Daml.Script
+import DA.Assert ((===))
+import DA.Time (hours, addRelTime)
+import Splice.Api.Token.AllocationInstructionV1
+import Splice.Api.Token.AllocationV1
+import Splice.Api.Token.HoldingV1
+import Splice.Api.Token.MetadataV1
+
+import Ballast.Fund
+import Ballast.Oracle
+import Ballast.Subscription
+import Ballast.Vault
+import Ballast.Testing.Registry
+
+data Rig = Rig
+  with
+    manager    : Party
+    vault      : Party
+    alice      : Party
+    bob        : Party
+    oracle     : Party
+    btcReg     : Party
+    ethReg     : Party
+    cBTC       : InstrumentId
+    cETH       : InstrumentId
+    fund       : ContractId Fund
+    index      : ContractId VaultIndex
+    priceSet   : ContractId PriceSet
+    units      : ContractId UnitLedger
+    settle     : SettlementInfo
+    aliceBtc   : ContractId Holding
+    btcFactory : ContractId AllocationFactory
+
+-- Fund holds 12 cBTC @ 60,000 + 180 cETH @ 2,000 = NAV 1,080,000 against 1,080 units in
+-- issue, so a unit is worth exactly 1,000. Alice deposits 2 cBTC = 120,000 and should get
+-- 120 units — after which the fund is 1,200,000 over 1,200 units, still 1,000 a unit.
+rig : Text -> Script Rig
+rig settlementRef = script do
+  manager <- allocateParty "Manager"
+  vault   <- allocateParty "BallastVault"
+  alice   <- allocateParty "Alice"
+  bob     <- allocateParty "Bob"
+  oracle  <- allocateParty "PriceOracle"
+  btcReg  <- allocateParty "cBTC-Registry"
+  ethReg  <- allocateParty "cETH-Registry"
+
+  let cBTC = InstrumentId with admin = btcReg, id = "cBTC"
+      cETH = InstrumentId with admin = ethReg, id = "cETH"
+      prices = [(cBTC, 60000.0), (cETH, 2000.0)]
+
+  fund <- submit (actAs [manager, vault]) do createCmd Fund with manager, vault, fundId = "BALLAST-01", oracle, maxPriceAge = hours 1, accepted = [cBTC], investors = [alice, bob]
+
+  vBtc <- submit (actAs [btcReg, vault]) do createCmd TestHolding with admin = btcReg, owner = vault, instrumentId = cBTC, amount = 12.0
+  vEth <- submit (actAs [ethReg, vault]) do createCmd TestHolding with admin = ethReg, owner = vault, instrumentId = cETH, amount = 180.0
+  aBtc <- submit (actAs [btcReg, alice]) do createCmd TestHolding with admin = btcReg, owner = alice, instrumentId = cBTC, amount = 2.0
+
+  btcFactoryT <- submit btcReg do createCmd TestAllocationFactory with admin = btcReg, users = [vault, alice, bob, manager]
+
+  index <- submit (actAs [manager, vault]) do createCmd VaultIndex with manager, vault, fundId = "BALLAST-01", holdings = [toInterfaceContractId vBtc, toInterfaceContractId vEth], pending = []
+  units <- submit (actAs [manager, vault]) do createCmd UnitLedger with manager, vault, fundId = "BALLAST-01", totalUnits = 1080.0
+
+  now <- getTime
+  priceSet <- submit oracle do createCmd PriceSet with oracle, prices, asOf = now, consumers = [manager, vault]
+
+  let settle = SettlementInfo with
+        executor = manager
+        settlementRef = Reference with id = settlementRef, cid = None
+        requestedAt = now
+        allocateBefore = addRelTime now (hours 1)
+        settleBefore = addRelTime now (hours 2)
+        meta = emptyMetadata
+
+  pure Rig with
+    manager, vault, alice, bob, oracle, btcReg, ethReg, cBTC, cETH, fund, index, priceSet
+    units, settle
+    aliceBtc = toInterfaceContractId aBtc
+    btcFactory = toInterfaceContractId btcFactoryT
+
+-- An investor reserves their deposit with the registry, exactly as the LP does for a rebalance.
+depositOf : Rig -> Party -> SettlementInfo -> InstrumentId -> Decimal -> ContractId Holding -> Script (ContractId Allocation)
+depositOf r investor settle instrument amount input = do
+  now <- getTime
+  res <- submit investor do
+    exerciseCmd r.btcFactory AllocationFactory_Allocate with
+      expectedAdmin = r.btcReg
+      allocation = AllocationSpecification with
+        settlement = settle
+        transferLegId = "deposit"
+        transferLeg = TransferLeg with sender = investor, receiver = r.vault, amount, instrumentId = instrument, meta = emptyMetadata
+      requestedAt = now
+      inputHoldingCids = [input]
+      extraArgs = ExtraArgs with context = emptyChoiceContext, meta = emptyMetadata
+  case res.output of
+    AllocationInstructionResult_Completed cid -> pure cid
+    _ -> error "expected a completed allocation"
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Units are issued at the NAV that existed BEFORE the money arrived.
+-- ─────────────────────────────────────────────────────────────────────────────
+subscriptionDoesNotDiluteExistingHolders : Script ()
+subscriptionDoesNotDiluteExistingHolders = script do
+  r <- rig "SUB-001"
+
+  req <- submit r.alice do exerciseCmd r.fund RequestSubscription with investor = r.alice, settlementRef = "SUB-001"
+  dep <- depositOf r r.alice r.settle r.cBTC 2.0 r.aliceBtc
+
+  res <- submit (actAs r.manager <> readAs r.vault) do
+    exerciseCmd req AcceptSubscription with
+      vaultIndexCid = r.index, priceSetCid = r.priceSet, unitLedgerCid = r.units
+      depositCid = dep, existingPosCid = None
+
+  -- 120,000 of deposit at 1,000 a unit.
+  res.unitsIssued === 120.0
+
+  -- THE PROPERTY: a unit is worth exactly what it was worth before Alice arrived.
+  nav <- submit (actAs r.manager <> readAs r.vault) do
+    exerciseCmd r.fund PublishNav with vaultIndexCid = res.newIndex, priceSetCid = r.priceSet
+  navs <- query @NavRecord r.alice
+  let [(_, n)] = filter (\(cid, _) -> cid == nav) navs
+  n.nav === 1200000.0
+  ul <- queryContractId r.manager res.unitLedger
+  case ul of
+    Some u -> do
+      u.totalUnits === 1200.0
+      n.nav / u.totalUnits === 1000.0   -- unchanged; nobody was diluted
+    None -> assert False
+
+  -- Alice holds her units and can see them.
+  aPos <- query @Position r.alice
+  length aPos === 1
+  let [(_, p)] = aPos
+  p.units === 120.0
+
+  -- Bob sees neither Alice's position nor the portfolio she just bought into.
+  bPos <- query @Position r.bob
+  bHold <- queryInterface @Holding r.bob
+  length bPos === 0
+  length bHold === 0
+
+  -- And Alice, now an investor, still cannot see what the fund holds.
+  aHold <- queryInterface @Holding r.alice
+  aIdx  <- query @VaultIndex r.alice
+  length aHold === 0
+  length aIdx === 0
+
+  pure ()
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Deposits the fund must refuse.
+-- ─────────────────────────────────────────────────────────────────────────────
+subscriptionRefusesBadDeposits : Script ()
+subscriptionRefusesBadDeposits = script do
+  r <- rig "SUB-001"
+  req <- submit r.alice do exerciseCmd r.fund RequestSubscription with investor = r.alice, settlementRef = "SUB-001"
+
+  let accept dep ps = exerciseCmd req AcceptSubscription with
+        vaultIndexCid = r.index, priceSetCid = ps, unitLedgerCid = r.units
+        depositCid = dep, existingPosCid = None
+      asManager = actAs r.manager <> readAs [r.vault, r.bob]
+
+  -- 1. Somebody else's deposit presented against Alice's request. Without this check the
+  --    manager could issue Alice units backed by Bob's money.
+  bBtc <- submit (actAs [r.btcReg, r.bob]) do createCmd TestHolding with admin = r.btcReg, owner = r.bob, instrumentId = r.cBTC, amount = 2.0
+  bobDep <- depositOf r r.bob r.settle r.cBTC 2.0 (toInterfaceContractId bBtc)
+  submitMustFail asManager do accept bobDep r.priceSet
+
+  -- 2. A deposit payable somewhere other than the fund.
+  now <- getTime
+  let elsewhereSettle = r.settle
+  aliceRes <- submit r.alice do
+    exerciseCmd r.btcFactory AllocationFactory_Allocate with
+      expectedAdmin = r.btcReg
+      allocation = AllocationSpecification with
+        settlement = elsewhereSettle
+        transferLegId = "deposit"
+        transferLeg = TransferLeg with sender = r.alice, receiver = r.bob, amount = 2.0, instrumentId = r.cBTC, meta = emptyMetadata
+      requestedAt = now
+      inputHoldingCids = [r.aliceBtc]
+      extraArgs = ExtraArgs with context = emptyChoiceContext, meta = emptyMetadata
+  let misdirected = case aliceRes.output of
+        AllocationInstructionResult_Completed cid -> cid
+        _ -> error "expected completed"
+  submitMustFail asManager do accept misdirected r.priceSet
+
+  -- 3. A stale price set — a subscription priced off yesterday's NAV is a transfer of value
+  --    between the subscriber and everyone else, in whichever direction the market moved.
+  stalePs <- submit r.oracle do createCmd PriceSet with oracle = r.oracle, prices = [(r.cBTC, 60000.0), (r.cETH, 2000.0)], asOf = addRelTime now (hours (-3)), consumers = [r.manager, r.vault]
+  aBtc2 <- submit (actAs [r.btcReg, r.alice]) do createCmd TestHolding with admin = r.btcReg, owner = r.alice, instrumentId = r.cBTC, amount = 2.0
+  goodDep <- depositOf r r.alice r.settle r.cBTC 2.0 (toInterfaceContractId aBtc2)
+  submitMustFail asManager do accept goodDep stalePs
+
+  -- 4. An instrument this fund does not accept as subscription. cETH is in the basket but not
+  --    on the accepted list, so taking it would leave the fund holding something it never
+  --    agreed to take in.
+  aEth <- submit (actAs [r.ethReg, r.alice]) do createCmd TestHolding with admin = r.ethReg, owner = r.alice, instrumentId = r.cETH, amount = 10.0
+  ethFactoryT <- submit r.ethReg do createCmd TestAllocationFactory with admin = r.ethReg, users = [r.vault, r.alice, r.manager]
+  ethRes <- submit r.alice do
+    exerciseCmd (toInterfaceContractId ethFactoryT : ContractId AllocationFactory) AllocationFactory_Allocate with
+      expectedAdmin = r.ethReg
+      allocation = AllocationSpecification with
+        settlement = r.settle
+        transferLegId = "deposit"
+        transferLeg = TransferLeg with sender = r.alice, receiver = r.vault, amount = 10.0, instrumentId = r.cETH, meta = emptyMetadata
+      requestedAt = now
+      inputHoldingCids = [toInterfaceContractId aEth]
+      extraArgs = ExtraArgs with context = emptyChoiceContext, meta = emptyMetadata
+  let ethDep = case ethRes.output of
+        AllocationInstructionResult_Completed cid -> cid
+        _ -> error "expected completed"
+  submitMustFail asManager do accept ethDep r.priceSet
+
+  -- The honest deposit still works, so none of the above failed for an unrelated reason.
+  _ <- submit (actAs r.manager <> readAs r.vault) do accept goodDep r.priceSet
+  pure ()
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- An investor is never locked in by asking.
+-- ─────────────────────────────────────────────────────────────────────────────
+investorCanWithdrawBeforeTheManagerActs : Script ()
+investorCanWithdrawBeforeTheManagerActs = script do
+  r <- rig "SUB-001"
+  req <- submit r.alice do exerciseCmd r.fund RequestSubscription with investor = r.alice, settlementRef = "SUB-001"
+  submit r.alice do exerciseCmd req WithdrawSubscription
+
+  -- The manager cannot act on a withdrawn request, and Alice keeps her assets.
+  dep <- depositOf r r.alice r.settle r.cBTC 2.0 r.aliceBtc
+  submitMustFail (actAs r.manager <> readAs r.vault) do
+    exerciseCmd req AcceptSubscription with
+      vaultIndexCid = r.index, priceSetCid = r.priceSet, unitLedgerCid = r.units
+      depositCid = dep, existingPosCid = None
+
+  -- The manager cannot withdraw on the investor's behalf either.
+  req2 <- submit r.alice do exerciseCmd r.fund RequestSubscription with investor = r.alice, settlementRef = "SUB-002"
+  submitMustFail r.manager do exerciseCmd req2 WithdrawSubscription
+  pure ()
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- A second subscription tops up the same position rather than fragmenting it.
+-- ─────────────────────────────────────────────────────────────────────────────
+subscribingTwiceTopsUpTheSamePosition : Script ()
+subscribingTwiceTopsUpTheSamePosition = script do
+  r <- rig "SUB-001"
+
+  req1 <- submit r.alice do exerciseCmd r.fund RequestSubscription with investor = r.alice, settlementRef = "SUB-001"
+  dep1 <- depositOf r r.alice r.settle r.cBTC 2.0 r.aliceBtc
+  res1 <- submit (actAs r.manager <> readAs r.vault) do
+    exerciseCmd req1 AcceptSubscription with
+      vaultIndexCid = r.index, priceSetCid = r.priceSet, unitLedgerCid = r.units
+      depositCid = dep1, existingPosCid = None
+
+  aBtc2 <- submit (actAs [r.btcReg, r.alice]) do createCmd TestHolding with admin = r.btcReg, owner = r.alice, instrumentId = r.cBTC, amount = 2.0
+  req2 <- submit r.alice do exerciseCmd r.fund RequestSubscription with investor = r.alice, settlementRef = "SUB-002"
+  let settle2 = r.settle with settlementRef = Reference with id = "SUB-002", cid = None
+  dep2 <- depositOf r r.alice settle2 r.cBTC 2.0 (toInterfaceContractId aBtc2)
+  res2 <- submit (actAs r.manager <> readAs r.vault) do
+    exerciseCmd req2 AcceptSubscription with
+      vaultIndexCid = res1.newIndex, priceSetCid = r.priceSet, unitLedgerCid = res1.unitLedger
+      depositCid = dep2, existingPosCid = Some res1.position
+
+  -- One position, both deposits, and still 1,000 a unit throughout.
+  aPos <- query @Position r.alice
+  length aPos === 1
+  let [(_, p)] = aPos
+  p.units === 240.0
+  res2.unitsIssued === 120.0
+  pure ()
