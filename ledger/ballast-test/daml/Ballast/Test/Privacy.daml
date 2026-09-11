@@ -48,7 +48,7 @@ fourLenses = script do
   let hBtc = toInterfaceContractId @Holding hBtcT
       hEth = toInterfaceContractId @Holding hEthT
 
-  idx <- submit (actAs [manager, vault]) do createCmd VaultIndex with manager, vault, fundId, holdings = [hBtc, hEth]
+  idx <- submit (actAs [manager, vault]) do createCmd VaultIndex with manager, vault, fundId, holdings = [hBtc, hEth], pending = []
 
   now <- getTime
   ps <- submit oracle do createCmd PriceSet with oracle, prices = [(cBTC, 64000.0), (cETH, 1850.0)], asOf = now, consumers = [manager, vault]
@@ -150,7 +150,7 @@ navRefusesBadInputs = script do
   now <- getTime
   let allPrices = [(cBTC, 64000.0), (cETH, 1850.0)]
 
-  goodIdx <- submit (actAs [manager, vault]) do createCmd VaultIndex with manager, vault, fundId, holdings = [hBtc, hEth]
+  goodIdx <- submit (actAs [manager, vault]) do createCmd VaultIndex with manager, vault, fundId, holdings = [hBtc, hEth], pending = []
   goodPs  <- submit oracle do createCmd PriceSet with oracle, prices = allPrices, asOf = now, consumers = [manager, vault]
 
   -- 1. A price set that omits an instrument the fund holds. Valuing the missing leg at zero
@@ -176,16 +176,16 @@ navRefusesBadInputs = script do
   submitMustFail (actAs manager <> readAs vault) do exerciseCmd fund PublishNav with vaultIndexCid = goodIdx, priceSetCid = futurePs
 
   -- 6. An index that double-counts a holding.
-  dupIdx <- submit (actAs [manager, vault]) do createCmd VaultIndex with manager, vault, fundId, holdings = [hBtc, hBtc]
+  dupIdx <- submit (actAs [manager, vault]) do createCmd VaultIndex with manager, vault, fundId, holdings = [hBtc, hBtc], pending = []
   submitMustFail (actAs manager <> readAs vault) do exerciseCmd fund PublishNav with vaultIndexCid = dupIdx, priceSetCid = goodPs
 
   -- 7. An index listing another vault's assets as this fund's.
   hOtherT <- submit (actAs [btcRegistry, outsider]) do createCmd TestHolding with admin = btcRegistry, owner = outsider, instrumentId = cBTC, amount = 999.0
-  foreignIdx <- submit (actAs [manager, vault]) do createCmd VaultIndex with manager, vault, fundId, holdings = [toInterfaceContractId @Holding hOtherT]
+  foreignIdx <- submit (actAs [manager, vault]) do createCmd VaultIndex with manager, vault, fundId, holdings = [toInterfaceContractId @Holding hOtherT], pending = []
   submitMustFail (actAs manager <> readAs vault) do exerciseCmd fund PublishNav with vaultIndexCid = foreignIdx, priceSetCid = goodPs
 
   -- 8. An index belonging to a different fund entirely.
-  otherIdx <- submit (actAs [manager, vault]) do createCmd VaultIndex with manager, vault, fundId = "BALLAST-02", holdings = [hBtc, hEth]
+  otherIdx <- submit (actAs [manager, vault]) do createCmd VaultIndex with manager, vault, fundId = "BALLAST-02", holdings = [hBtc, hEth], pending = []
   submitMustFail (actAs manager <> readAs vault) do exerciseCmd fund PublishNav with vaultIndexCid = otherIdx, priceSetCid = goodPs
 
   -- The honest path still works, so none of the above failed for an unrelated reason.

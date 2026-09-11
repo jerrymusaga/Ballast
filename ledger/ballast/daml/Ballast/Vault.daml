@@ -20,9 +20,20 @@
 -- └───────────────────────────────────────────────────────────────────────────────────────┘
 module Ballast.Vault where
 
+import DA.List (dedup)
+import Splice.Api.Token.AllocationInstructionV1
+import Splice.Api.Token.AllocationV1 (Allocation, AllocationSpecification)
 import Splice.Api.Token.HoldingV1
+import Splice.Api.Token.MetadataV1
 
 import Ballast.Valuation
+
+-- | What reserving assets produced: the allocation, and the index that now reflects the fund.
+data AllocateResult = AllocateResult
+  with
+    allocationCid : ContractId Allocation
+    newIndex      : ContractId VaultIndex
+  deriving (Eq, Show)
 
 template VaultIndex
   with
@@ -30,17 +41,86 @@ template VaultIndex
     vault    : Party
     fundId   : Text
     holdings : [ContractId Holding]
+    pending  : [ContractId Allocation]
+      -- ^ Assets reserved for settlements that have not executed yet.
+      --
+      -- These are STILL THE FUND'S. An allocation is a lien, not a sale: until the settlement
+      -- executes, the fund owns what it reserved and can reclaim it by cancelling. Leaving
+      -- them out of the portfolio would understate the fund exactly the way a cherry-picked
+      -- holdings list would — and worse, it would make the drift that justified the rebalance
+      -- disappear the moment the fund reserved assets to perform it.
   where
     signatory manager, vault
 
--- | The fund's whole portfolio, read through the index.
+    -- | Reserve some of the fund's assets for one leg of a settlement, and move the index
+    -- with them, in one transaction.
+    --
+    -- This exists because of a detail in the standard that would otherwise silently break
+    -- completeness: a successful allocation MUST archive the holdings that funded it. A real
+    -- registry therefore destroys the fund's holdings at ALLOCATE time and mints locked
+    -- replacements with new contract ids — so an index built before allocating is stale the
+    -- moment the allocation exists, and the next NAV fails on a dangling id.
+    --
+    -- The manager picks WHICH holdings to spend, which is a legitimate choice. It cannot
+    -- quietly drop the others, because the new index is derived rather than supplied:
+    --
+    --     new index  =  old index  −  inputs  +  change returned by the registry
+    --
+    -- Both subtrahend and addend come from the transaction itself. There is no argument here
+    -- the manager could use to make the fund look smaller than it is.
+    choice AllocateFromVault : AllocateResult
+      with
+        factoryCid       : ContractId AllocationFactory
+        expectedAdmin    : Party
+        allocation       : AllocationSpecification
+        inputHoldingCids : [ContractId Holding]
+      controller manager
+      do
+        assertMsg "the fund must be the sender of its own allocation"
+          (allocation.transferLeg.sender == vault)
+        assertMsg "duplicate input holding"
+          (length (dedup inputHoldingCids) == length inputHoldingCids)
+        assertMsg "allocating a holding that is not in this fund's index"
+          (all (`elem` holdings) inputHoldingCids)
+        assertMsg "an allocation must be funded" (not (null inputHoldingCids))
+
+        now <- getTime
+        res <- exercise factoryCid AllocationFactory_Allocate with
+          expectedAdmin
+          allocation
+          requestedAt = now
+          inputHoldingCids
+          extraArgs = ExtraArgs with context = emptyChoiceContext, meta = emptyMetadata
+
+        -- Anything other than a completed allocation aborts the whole transaction, so the
+        -- fund is never left having spent holdings for a reservation that does not exist.
+        -- Two-step registries (which return a pending instruction) need follow-up handling
+        -- that is not written yet, and failing loudly is the honest placeholder.
+        allocationCid <- case res.output of
+          AllocationInstructionResult_Completed cid -> pure cid
+          AllocationInstructionResult_Pending _ -> fail "registry returned a pending allocation instruction; two-step registries are not supported yet"
+          AllocationInstructionResult_Failed -> fail "registry refused the allocation"
+
+        let remaining = filter (\c -> c `notElem` inputHoldingCids) holdings
+        newIndex <- create this with
+          holdings = dedup (remaining <> res.senderChangeCids)
+          pending = dedup (allocationCid :: pending)
+        pure AllocateResult with allocationCid, newIndex
+
+-- | The fund's whole portfolio, per instrument: what it holds plus what it has reserved.
 --
 -- A stale entry — a holding archived out from under the index — makes `fetch` fail and the
 -- whole transaction abort. That is the correct direction to fail: a NAV computed from an
 -- index that no longer matches reality is worse than no NAV at all.
-portfolioOf : ContractId VaultIndex -> Party -> Text -> Update [HoldingView]
+portfolioOf : ContractId VaultIndex -> Party -> Text -> Update [(InstrumentId, Decimal)]
 portfolioOf idxCid vault fundId = do
   idx <- fetch idxCid
   assertMsg "vault index belongs to a different vault" (idx.vault == vault)
   assertMsg "vault index belongs to a different fund" (idx.fundId == fundId)
-  vaultHoldings vault idx.holdings
+  hvs <- vaultHoldings vault idx.holdings
+  reserved <- forA idx.pending \cid -> do
+    av <- view <$> fetch cid
+    let leg = av.allocation.transferLeg
+    assertMsg "a pending allocation is not this fund's to reserve" (leg.sender == vault)
+    pure (leg.instrumentId, leg.amount)
+  pure (mergeQuantities (quantities hvs) reserved)

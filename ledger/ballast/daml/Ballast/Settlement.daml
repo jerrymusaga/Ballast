@@ -123,6 +123,10 @@ template RebalanceSettlement
               , let leg = av.allocation.transferLeg ]
 
         archive vaultIndexCid
-        newIndex <- create VaultIndex with manager, vault, fundId, holdings = dedup (untouched <> ours)
+        newIndex <- create VaultIndex with
+          manager, vault, fundId
+          holdings = dedup (untouched <> ours)
+          -- The settled reservations are no longer pending; they are holdings now.
+          pending = filter (\c -> c `notElem` allocationCids) idx.pending
 
         pure RebalanceResult with proof, newIndex

@@ -75,7 +75,7 @@ template Fund
       do
         -- Note what the manager no longer gets to supply: not the holdings, not the prices.
         prices <- freshPrices priceSetCid oracle maxPriceAge
-        hvs    <- portfolioOf vaultIndexCid vault fundId
-        nav    <- navOf prices (quantities hvs)
+        qs     <- portfolioOf vaultIndexCid vault fundId
+        nav    <- navOf prices qs
         asOf   <- getTime
         create NavRecord with manager, fundId, nav, asOf, investors

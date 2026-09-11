@@ -157,8 +157,7 @@ template Mandate
                        (now >= addRelTime t minRebalanceGap)
           None    -> pure ()
 
-        hvs <- portfolioOf vaultIndexCid vault fundId
-        let pre = quantities hvs
+        pre <- portfolioOf vaultIndexCid vault fundId
         navPre <- navOf oraclePrices pre
         assertMsg "fund has no value to rebalance" (navPre > 0.0)
 

@@ -110,7 +110,9 @@ Canton makes it *cheap and native*, not that it is the only place it is *conceiv
 1. A basket is defined over real CIP-56 instruments by `InstrumentId`, with private target weights.
 2. Investors subscribe; units are minted against real deposits. Positions are private per investor.
 3. Prices move and the basket drifts from its targets.
-4. When drift breaches the policy band, an off-ledger keeper proposes a rebalance.
+4. When drift breaches the policy band, an off-ledger keeper proposes a rebalance. The fund
+   and its counterparty each reserve their side with their own registry; reserved assets stay
+   the fund's, so reserving does not move NAV or erase the drift that justified the trade.
 5. The **policy contract validates it on-ledger** against the private mandate — the manager cannot
    deviate, and the trade does not commit if it would.
 6. Assets move atomically via CIP-56 transfer/allocation. Investors get proof of compliance; the
@@ -133,7 +135,7 @@ ledger/
   dars/           real CIP-56 interface DARs (Apache-2.0, Digital Asset), vendored
   ballast/        the product package — NO token template, NO daml-script
     Valuation     reads holdings through the CIP-56 interface; aggregates per instrument
-    Vault         the VaultIndex — the fund's holdings, enumerated on the ledger
+    Vault         the VaultIndex — holdings and reservations, enumerated on the ledger
     Oracle        signed, freshness-checked price sets
     Fund          NAV published from the index at oracle prices
     Mandate       the private strategy, and the policy that enforces it
@@ -163,7 +165,7 @@ not on the DevNet where real cBTC and cETH exist. Targeting v2 would mean holdin
 cd ledger && daml build --all && cd ballast-test && daml test
 ```
 
-Proven so far, on **real CIP-56 `Holding` and `Allocation` interface contracts**, in 11 scripts:
+Proven so far, on **real CIP-56 `Holding` and `Allocation` interface contracts**, in 12 scripts:
 
 - **`fourLenses`** — a NAV computed from holdings is disclosed to investors who cannot see
   those holdings; the market sees nothing; the two instrument registries each see only their
@@ -188,6 +190,10 @@ Proven so far, on **real CIP-56 `Holding` and `Allocation` interface contracts**
   never authorised.
 - **`failedValidationMovesNothing`** — when validation fails the portfolio is *untouched*, and
   no proof is emitted for a rebalance that never happened.
+- **`allocationCannotHideAssets`** — reserving assets cannot shrink the fund: holdings outside
+  the index cannot be spent, another party's assets cannot be offered as the fund's leg, and a
+  reservation leaves the index exactly one holding lighter, one change holding heavier, and
+  one reservation longer.
 
 ### What is deliberately still not claimed
 
@@ -195,12 +201,11 @@ Proven so far, on **real CIP-56 `Holding` and `Allocation` interface contracts**
   checkable: the manager cannot mark its own book, cannot pick which price set to value
   against, and cannot pick the moment. That is where a real fund puts the trust too — in an
   administrator rather than in the portfolio manager.
-- **The test registry does not lock.** A production CIP-56 registry locks the backing
-  holdings when an allocation is created, which archives them and mints locked replacements
-  with new contract ids. The local test registry leaves them alone until execution. Wiring
-  Ballast to a locking registry means the *allocate* step must be Ballast-mediated too, so the
-  index is updated when locking changes those ids. Until then the completeness invariant holds
-  against the test registry and not yet against a real one.
+- **Two-step registries are not supported yet.** A registry may return a *pending allocation
+  instruction* instead of a completed allocation. Ballast currently aborts the transaction
+  rather than tracking the pending state, so the fund never spends holdings for a reservation
+  that does not exist — but a registry that works this way will not settle until that
+  follow-up is written.
 - **The executor needs to read the counterparty's allocation.** In the tests that is a
   `readAs`; in a real deployment it must be explicit disclosure at submission time, not
   standing read rights over the LP — a fund with blanket visibility into its dealer's book

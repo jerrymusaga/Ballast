@@ -12,6 +12,7 @@
 module Ballast.Testing.Registry where
 
 import DA.Foldable (forA_)
+import Splice.Api.Token.AllocationInstructionV1
 import Splice.Api.Token.AllocationV1
 import Splice.Api.Token.HoldingV1
 import Splice.Api.Token.MetadataV1
@@ -47,59 +48,92 @@ mintFor admin owner instrumentId amount =
       c <- create TestHolding with admin, owner, instrumentId, amount
       pure [toInterfaceContractId c]
 
--- | Archive the backing holdings and hand their whole value back to the sender.
-releaseToSender : Party -> AllocationSpecification -> [ContractId TestHolding] -> Update [ContractId Holding]
-releaseToSender admin spec backing = do
-  hs <- forA backing fetch
-  let total = sum (map (\h -> h.amount) hs)
-  forA_ backing archive
-  mintFor admin spec.transferLeg.sender spec.transferLeg.instrumentId total
+-- | Hand the reserved amount back to the sender.
+releaseToSender : Party -> AllocationSpecification -> Update [ContractId Holding]
+releaseToSender admin spec =
+  mintFor admin spec.transferLeg.sender spec.transferLeg.instrumentId spec.transferLeg.amount
 
--- | A minimal CIP-56 `Allocation`, so the settlement executor can be tested end to end.
+-- | A CIP-56 `Allocation` that LOCKS, the way a production registry does.
 --
--- ONE DELIBERATE SIMPLIFICATION, stated because it matters: a real registry LOCKS the backing
--- holdings when the allocation is created, which archives them and mints locked replacements.
--- This one leaves them alone until execution. That keeps the VaultIndex accurate between
--- allocation and settlement, which is convenient for testing the executor but is NOT how a
--- production registry behaves. Wiring Ballast against a locking registry will require the
--- allocate step to be Ballast-mediated too, so the index is updated when locking changes the
--- holdings' contract ids. That work is not done yet.
+-- The funding holdings are archived when the allocation is created, not when it settles —
+-- the standard requires exactly that ("the successful allocation MUST archive all of these
+-- holdings"), so that a second allocation cannot spend the same assets. The reserved amount
+-- lives in the allocation itself until it settles or is released.
+--
+-- `holdingCids` is left empty in the view, which the standard explicitly permits for
+-- registries that do not represent reserved holdings as separate on-ledger contracts.
 template TestAllocation
   with
-    admin   : Party
-    spec    : AllocationSpecification
-    backing : [ContractId TestHolding]
+    admin : Party
+    spec  : AllocationSpecification
   where
     signatory admin, spec.transferLeg.sender
     observer spec.transferLeg.receiver, spec.settlement.executor
 
-    ensure not (null backing) && spec.transferLeg.amount > 0.0
+    ensure spec.transferLeg.amount > 0.0
 
     interface instance Allocation for TestAllocation where
       view = AllocationView with
         allocation = spec
-        holdingCids = map toInterfaceContractId backing
+        holdingCids = []
         meta = emptyMetadata
 
       allocation_executeTransferImpl _self _arg = do
         -- The receiver's authority arrives via the choice controllers, which is what lets a
         -- holding be minted for them here.
-        hs <- forA backing fetch
-        let total = sum (map (\h -> h.amount) hs)
-            amt = spec.transferLeg.amount
-        assertMsg "insufficient backing for this allocation" (total >= amt)
-        forA_ backing archive
-        recv   <- mintFor admin spec.transferLeg.receiver spec.transferLeg.instrumentId amt
-        change <- mintFor admin spec.transferLeg.sender spec.transferLeg.instrumentId (total - amt)
+        recv <- mintFor admin spec.transferLeg.receiver spec.transferLeg.instrumentId spec.transferLeg.amount
         pure Allocation_ExecuteTransferResult with
-          senderHoldingCids = change
+          senderHoldingCids = []
           receiverHoldingCids = recv
           meta = emptyMetadata
 
       allocation_cancelImpl _self _arg = do
-        released <- releaseToSender admin spec backing
+        released <- releaseToSender admin spec
         pure Allocation_CancelResult with senderHoldingCids = released, meta = emptyMetadata
 
       allocation_withdrawImpl _self _arg = do
-        released <- releaseToSender admin spec backing
+        released <- releaseToSender admin spec
         pure Allocation_WithdrawResult with senderHoldingCids = released, meta = emptyMetadata
+
+-- | The factory a sender's wallet exercises to reserve assets. One-step: it returns a
+-- completed allocation rather than a pending instruction.
+template TestAllocationFactory
+  with
+    admin : Party
+    users : [Party]   -- senders must see the factory to exercise it
+  where
+    signatory admin
+    observer users
+
+    interface instance AllocationFactory for TestAllocationFactory where
+      view = AllocationFactoryView with admin, meta = emptyMetadata
+
+      allocationFactory_publicFetchImpl _self arg = do
+        assertMsg "factory admin mismatch" (arg.expectedAdmin == admin)
+        pure AllocationFactoryView with admin, meta = emptyMetadata
+
+      allocationFactory_allocateImpl _self arg = do
+        assertMsg "factory admin mismatch" (arg.expectedAdmin == admin)
+        let spec = arg.allocation
+            leg  = spec.transferLeg
+        assertMsg "this registry does not administer that instrument"
+          (leg.instrumentId.admin == admin)
+
+        hvs <- forA arg.inputHoldingCids (fmap view . fetch)
+        forA_ hvs \hv -> do
+          assertMsg "input holding is not the sender's" (hv.owner == leg.sender)
+          assertMsg "input holding is the wrong instrument" (hv.instrumentId == leg.instrumentId)
+
+        let total = sum (map (\hv -> hv.amount) hvs)
+        assertMsg "input holdings do not cover the allocation" (total >= leg.amount)
+
+        -- Archive the funding holdings. This is the step that makes a pre-allocation index
+        -- stale, and the reason Ballast mediates allocation through VaultIndex.
+        forA_ arg.inputHoldingCids archive
+
+        allocCid <- create TestAllocation with admin, spec
+        change <- mintFor admin leg.sender leg.instrumentId (total - leg.amount)
+        pure AllocationInstructionResult with
+          output = AllocationInstructionResult_Completed with allocationCid = toInterfaceContractId allocCid
+          senderChangeCids = change
+          meta = emptyMetadata

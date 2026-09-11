@@ -51,3 +51,10 @@ navOf prices qs = do
 -- | Quantity of one instrument, zero if not held.
 quantityOf : [(InstrumentId, Decimal)] -> InstrumentId -> Decimal
 quantityOf qs i = optional 0.0 identity (lookup i qs)
+
+-- | Add two per-instrument position lists together.
+mergeQuantities : [(InstrumentId, Decimal)] -> [(InstrumentId, Decimal)] -> [(InstrumentId, Decimal)]
+mergeQuantities a b =
+  let instruments = dedup (map fst a <> map fst b)
+      total i = quantityOf a i + quantityOf b i
+  in map (\i -> (i, total i)) instruments
