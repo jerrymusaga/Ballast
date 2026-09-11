@@ -1,0 +1,98 @@
+/* Ballast — the name is the brief: weight that keeps you steady, sitting below the
+   waterline. Deep water for ground, brass for the single thing that matters on each
+   screen, neutrals biased blue so nothing reads as unconsidered grey. */
+
+:root {
+  --ground: #070E15;
+  --ground-2: #0A141D;
+  --surface: #0D1A24;
+  --surface-2: #122430;
+  --raise: #16303F;
+  --line: #1B3646;
+  --line-soft: #132936;
+
+  --ink: #E6EEF4;
+  --ink-2: #9CB2C0;
+  --ink-3: #647F91;
+  --ink-4: #43596A;
+
+  --brass: #E0AC45;
+  --brass-2: #B8862F;
+  --brass-wash: rgba(224, 172, 69, 0.09);
+  --brass-line: rgba(224, 172, 69, 0.28);
+
+  --teal: #56B0C0;
+  --good: #5CB893;
+  --bad: #DC8264;
+
+  --r-sm: 6px;
+  --r: 10px;
+  --r-lg: 16px;
+
+  --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.6);
+  --page: 1180px;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html {
+  color-scheme: dark;
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-size: 15px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-synthesis-weight: none;
+}
+
+/* A single soft light source from the top, so the page has depth without any element
+   needing a heavy shadow to prove it is a card. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0 0 auto 0;
+  height: 620px;
+  background:
+    radial-gradient(1100px 420px at 18% -12%, rgba(86, 176, 192, 0.10), transparent 62%),
+    radial-gradient(820px 380px at 82% -18%, rgba(224, 172, 69, 0.07), transparent 60%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+h1, h2, h3, h4 { margin: 0; font-weight: 600; text-wrap: balance; letter-spacing: -0.02em; }
+p { margin: 0; text-wrap: pretty; }
+a { color: inherit; text-decoration: none; }
+button { font: inherit; color: inherit; }
+
+::selection { background: var(--brass); color: #17120A; }
+
+:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 3px;
+  border-radius: var(--r-sm);
+}
+
+.page { position: relative; z-index: 1; }
+.wrap { width: 100%; max-width: var(--page); margin-inline: auto; padding-inline: 28px; }
+
+.mono { font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+
+.eyebrow {
+  font-size: 11.5px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--brass);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; }
+}

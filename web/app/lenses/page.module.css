@@ -1,0 +1,8 @@
+.main { padding: 62px 0 96px; }
+.h1 { font-family: var(--font-serif); font-size: clamp(30px, 4.4vw, 44px); margin-top: 16px; letter-spacing: -0.03em; }
+.lede { margin-top: 16px; margin-bottom: 36px; color: var(--ink-2); font-size: 16px; max-width: 74ch; line-height: 1.62; }
+
+.offline { padding: 60px 26px; text-align: center; border: 1px dashed var(--line); border-radius: var(--r-lg); background: var(--ground-2); }
+.offline h2 { font-family: var(--font-serif); font-size: 22px; margin-bottom: 10px; }
+.offline p { color: var(--ink-3); font-size: 14.5px; max-width: 56ch; margin-inline: auto; }
+.err { display: inline-block; margin-top: 18px; font-size: 12px; color: var(--bad); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-sm); padding: 8px 12px; }

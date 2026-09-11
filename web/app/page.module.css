@@ -1,0 +1,148 @@
+/* ── hero ─────────────────────────────────────────────── */
+.hero { padding: 104px 0 84px; }
+
+.h1 {
+  font-family: var(--font-serif);
+  font-size: clamp(38px, 6vw, 68px);
+  line-height: 1.02;
+  letter-spacing: -0.035em;
+  margin-top: 22px;
+}
+
+.lede {
+  margin-top: 26px;
+  max-width: 60ch;
+  font-size: 17.5px;
+  line-height: 1.6;
+  color: var(--ink-2);
+}
+
+.cta { margin-top: 38px; display: flex; gap: 12px; flex-wrap: wrap; }
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  height: 44px;
+  padding: 0 22px;
+  border-radius: 9px;
+  font-size: 14.5px;
+  font-weight: 500;
+  border: 1px solid transparent;
+  transition: transform .14s ease, filter .14s ease, background-color .14s ease;
+}
+.btn:active { transform: translateY(1px); }
+
+.primary { background: var(--brass); color: #16110A; border-color: var(--brass); }
+.primary:hover { filter: brightness(1.07); }
+
+.ghost { border-color: var(--line); color: var(--ink); }
+.ghost:hover { background: var(--surface); }
+
+/* ── the trap ─────────────────────────────────────────── */
+.trap { padding: 30px 0 78px; }
+
+.trapGrid {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 30px;
+  padding: 30px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background:
+    linear-gradient(180deg, var(--surface) 0%, var(--ground-2) 100%);
+}
+
+.trapSide h3 { font-family: var(--font-serif); font-size: 19px; margin-bottom: 9px; }
+.trapSide p { color: var(--ink-2); font-size: 14.5px; max-width: 44ch; }
+
+.pill {
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--brass);
+  border: 1px solid var(--brass-line);
+  background: var(--brass-wash);
+  border-radius: 999px;
+  padding: 7px 15px;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+}
+
+.resolve {
+  margin-top: 26px;
+  font-size: 17px;
+  line-height: 1.62;
+  color: var(--ink-2);
+  max-width: 76ch;
+}
+.resolve b { color: var(--ink); font-weight: 600; }
+
+/* ── sections ─────────────────────────────────────────── */
+.section { padding: 78px 0; border-top: 1px solid var(--line-soft); }
+
+.head { margin-bottom: 34px; max-width: 72ch; }
+.h2 {
+  font-family: var(--font-serif);
+  font-size: clamp(26px, 3.4vw, 36px);
+  line-height: 1.15;
+  margin-top: 14px;
+}
+.sub { margin-top: 14px; color: var(--ink-2); font-size: 15.5px; max-width: 66ch; }
+
+.note {
+  margin-top: 18px;
+  padding: 16px 18px;
+  border: 1px solid var(--brass-line);
+  border-left-width: 2px;
+  background: var(--brass-wash);
+  border-radius: var(--r);
+  font-size: 14.5px;
+  line-height: 1.6;
+  color: var(--ink-2);
+  max-width: 88ch;
+}
+.note b { color: var(--ink); font-weight: 600; }
+
+.offline {
+  padding: 56px 26px;
+  text-align: center;
+  border: 1px dashed var(--line);
+  border-radius: var(--r-lg);
+  background: var(--ground-2);
+}
+.offline h3 { font-family: var(--font-serif); font-size: 21px; margin-bottom: 10px; }
+.offline p { color: var(--ink-3); font-size: 14.5px; max-width: 54ch; margin-inline: auto; }
+
+/* ── tiles ────────────────────────────────────────────── */
+.grid4 { display: grid; grid-template-columns: repeat(auto-fit, minmax(248px, 1fr)); gap: 12px; }
+
+.tile {
+  padding: 22px;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--surface);
+  transition: border-color .16s ease;
+}
+.tile:hover { border-color: var(--raise); }
+.tile h3 { font-family: var(--font-serif); font-size: 17px; margin-bottom: 10px; }
+.tile p { font-size: 14px; color: var(--ink-2); line-height: 1.58; }
+
+/* ── limits ───────────────────────────────────────────── */
+.limits { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: 1px; background: var(--line-soft); border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; }
+
+.limit { display: grid; grid-template-columns: 32px 1fr; gap: 14px; padding: 22px; background: var(--surface); }
+.limitNum { font-size: 12px; color: var(--brass); padding-top: 3px; }
+.limit h3 { font-size: 15px; font-weight: 600; margin-bottom: 7px; letter-spacing: -0.01em; }
+.limit p { font-size: 13.5px; color: var(--ink-2); line-height: 1.58; }
+
+/* ── footer ───────────────────────────────────────────── */
+.footer { padding: 40px 0 64px; border-top: 1px solid var(--line-soft); color: var(--ink-4); font-size: 13px; }
+.footRow { display: flex; gap: 22px; flex-wrap: wrap; align-items: center; }
+.footRow a:hover { color: var(--ink-2); }
+
+@media (max-width: 900px) {
+  .trapGrid { grid-template-columns: 1fr; }
+  .pill { justify-self: start; }
+}
