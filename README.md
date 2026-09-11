@@ -134,6 +134,7 @@ Canton makes it *cheap and native*, not that it is the only place it is *conceiv
 ## Layout
 
 ```
+web/             landing page and lens viewer — no build step
 keeper/          the off-ledger drift watcher — proposes, never decides
 ledger/
   dars/           real CIP-56 interface DARs (Apache-2.0, Digital Asset), vendored
@@ -170,6 +171,7 @@ not on the DevNet where real cBTC and cETH exist. Targeting v2 would mean holdin
 ```
 cd ledger && daml build --all && cd ballast-test && daml test   # 19 scripts
 cd keeper && npm test                                           # 10 tests, no deps
+cd web && npm run dev                                           # dashboard on :5173
 ```
 
 Proven so far, on **real CIP-56 `Holding` and `Allocation` interface contracts**, in 19 scripts:

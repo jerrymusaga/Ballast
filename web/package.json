@@ -1,0 +1,12 @@
+{
+  "name": "ballast-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Ballast dashboard — the three lenses, answered by the ledger.",
+  "engines": { "node": ">=22.6" },
+  "scripts": {
+    "dev": "node --experimental-strip-types server.ts",
+    "start": "node --env-file=../keeper/.env --experimental-strip-types server.ts"
+  }
+}

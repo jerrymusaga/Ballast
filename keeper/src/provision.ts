@@ -34,6 +34,10 @@ const ROLES = [
   { hint: "ballast-lp", right: "actAs" as const, why: "demo counterparty for the block trade" },
   { hint: "ballast-alice", right: "actAs" as const, why: "demo investor" },
   { hint: "ballast-bob", right: "actAs" as const, why: "demo investor" },
+  // An outsider with no relationship to the fund. It exists so the "market" lens is answered
+  // by a genuinely unrelated party rather than by an investor who happens to see little —
+  // which would flatter the demo and misstate the claim.
+  { hint: "ballast-market", right: "readAs" as const, why: "outsider — must see nothing" },
 ];
 
 const DAR = "../../ledger/ballast/.daml/dist/ballast-0.1.0.dar";

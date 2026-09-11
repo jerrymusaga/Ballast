@@ -2551,3 +2551,95 @@ ValidatedTopologyTransaction(
 2026-09-11 16:04:45,917 [canton-env-ec-32] INFO  c.d.c.p.a.s.a.ApiPartyManagementService:participant=sandbox tid:7753a6052909cc1f55048cf77881bcc9 - Listing known parties.
 2026-09-11 16:29:22,805 [canton-env-ec-30] INFO  c.d.c.p.a.s.a.ApiPartyManagementService:participant=sandbox tid:3cfbc7a809418c8697b98f5d0dd57938 - Listing known parties.
 2026-09-11 16:29:23,099 [canton-env-ec-29] INFO  c.d.c.p.a.s.ApiStateService:participant=sandbox tid:a6361d6b6b886df898b0342aff7178b6 - Received request for active contracts: GetActiveContractsRequest(40,Some(EventFormat(Map(ballast-alice::122038b104682a36574185fc89869151cd5ec99ef7962f2eadbce8dda1e389167878 -> Filters(Vector())),None,false))), filters -> {ballast-alice::122038b104682a36574185fc89869151cd5ec99ef7962f2eadbce8dda1e389167878: {templates: [], interfaces: [], all-templates, created_event_blob: false}}.
+2026-09-11 16:38:25,271 [canton-env-ec-32] INFO  c.d.c.p.a.s.a.ApiPartyManagementService:participant=sandbox tid:54f78e254c0af0cd1f3ff24c4cd4e702 - Listing known parties.
+2026-09-11 16:38:25,508 [canton-env-ec-32] INFO  c.d.c.p.a.s.ApiStateService:participant=sandbox tid:29742b6799c15909ea5025aaec7f703d - Received request for active contracts: GetActiveContractsRequest(40,Some(EventFormat(Map(ballast-manager::122038b104682a36574185fc89869151cd5ec99ef7962f2eadbce8dda1e389167878 -> Filters(Vector())),None,false))), filters -> {ballast-manager::122038b104682a36574185fc89869151cd5ec99ef7962f2eadbce8dda1e389167878: {templates: [], interfaces: [], all-templates, created_event_blob: false}}.
+2026-09-11 16:41:55,841 [canton-env-ec-31] INFO  c.d.c.p.a.s.a.ApiPartyManagementService:participant=sandbox tid:aa975c2cfa91ee4306430d3d4bc1fb55 - Listing known parties.
+2026-09-11 16:41:55,929 [canton-env-ec-31] INFO  c.d.c.p.a.s.ApiStateService:participant=sandbox tid:aaccb5636f88affded80a3e0aa5719bb - Received request for active contracts: GetActiveContractsRequest(40,Some(EventFormat(Map(ballast-manager::122038b104682a36574185fc89869151cd5ec99ef7962f2eadbce8dda1e389167878 -> Filters(Vector())),None,false))), filters -> {ballast-manager::122038b104682a36574185fc89869151cd5ec99ef7962f2eadbce8dda1e389167878: {templates: [], interfaces: [], all-templates, created_event_blob: false}}.
+2026-09-11 16:41:56,288 [canton-env-ec-29] INFO  c.d.c.p.a.s.ApiStateService:participant=sandbox tid:4b1f3db1ec4e6abe3c499dabb123f3ef - Received request for active contracts: GetActiveContractsRequest(40,Some(EventFormat(Map(ballast-vault::122038b104682a36574185fc89869151cd5ec99ef7962f2eadbce8dda1e389167878 -> Filters(Vector())),None,false))), filters -> {ballast-vault::122038b104682a36574185fc89869151cd5ec99ef7962f2eadbce8dda1e389167878: {templates: [], interfaces: [], all-templates, created_event_blob: false}}.
+2026-09-11 16:41:56,422 [canton-env-ec-29] INFO  c.d.c.p.a.s.ApiStateService:participant=sandbox tid:6fe4eb7239d33bd0d3c0344fab823ff8 - Received request for active contracts: GetActiveContractsRequest(40,Some(EventFormat(Map(ballast-alice::122038b104682a36574185fc89869151cd5ec99ef7962f2eadbce8dda1e389167878 -> Filters(Vector())),None,false))), filters -> {ballast-alice::122038b104682a36574185fc89869151cd5ec99ef7962f2eadbce8dda1e389167878: {templates: [], interfaces: [], all-templates, created_event_blob: false}}.
+2026-09-11 16:41:56,602 [canton-env-ec-64] INFO  c.d.c.p.a.s.ApiStateService:participant=sandbox tid:bfece2180c5e4043a09e798821d704f5 - Received request for active contracts: GetActiveContractsRequest(40,Some(EventFormat(Map(ballast-lp::122038b104682a36574185fc89869151cd5ec99ef7962f2eadbce8dda1e389167878 -> Filters(Vector())),None,false))), filters -> {ballast-lp::122038b104682a36574185fc89869151cd5ec99ef7962f2eadbce8dda1e389167878: {templates: [], interfaces: [], all-templates, created_event_blob: false}}.
+2026-09-11 16:41:56,665 [canton-env-ec-29] INFO  c.d.c.p.a.s.ApiStateService:participant=sandbox tid:7903780279cc41273a927bcefefa1e91 - Received request for active contracts: GetActiveContractsRequest(40,Some(EventFormat(Map(ballast-bob::122038b104682a36574185fc89869151cd5ec99ef7962f2eadbce8dda1e389167878 -> Filters(Vector())),None,false))), filters -> {ballast-bob::122038b104682a36574185fc89869151cd5ec99ef7962f2eadbce8dda1e389167878: {templates: [], interfaces: [], all-templates, created_event_blob: false}}.
+2026-09-11 16:42:31,010 [canton-env-ec-29] INFO  c.d.c.p.a.s.a.ApiPartyManagementService:participant=sandbox tid:21d992a6d3fe3fdf38401357e237ec51 - Listing known parties.
+2026-09-11 16:42:31,071 [canton-env-ec-30] INFO  c.d.c.p.a.s.ApiPackageService:participant=sandbox tid:6f0298ef0bafb630f36caf70f256ff0f - Received request to list packages: ListPackagesRequest()
+2026-09-11 16:42:31,283 [canton-env-ec-32] INFO  c.d.c.p.a.s.a.ApiPackageManagementService:participant=sandbox tid:f309334381ae970ffb5f3eafad1f70aa - Uploading DAR file, submissionId -> '731f1ea8-9f7b-4d48-9f04-13fa3683998d'.
+2026-09-11 16:42:38,235 [canton-env-ec-31] INFO  c.d.c.p.a.s.ApiPackageService:participant=sandbox tid:d7ef972e51436b38604fa5e2b510a7f2 - Received request to list packages: ListPackagesRequest()
+2026-09-11 16:42:38,285 [canton-env-ec-31] INFO  c.d.c.p.a.s.a.ApiPartyManagementService:participant=sandbox tid:7ee5f42947261a7a2afa8a88146980a8 - Allocating party, parties -> ['ballast-market'].
+2026-09-11 16:42:38,438 [canton-env-ec-29] INFO  c.d.c.t.p.TopologyStateProcessorOld:participant=sandbox/psid=mysynchronizer::122070a47a88::34-0 tid:7ee5f42947261a7a2afa8a88146980a8 - Enqueuing topology transaction 1/1 TxHash(SHA-256:f8003db382c4...) with ts=EffectiveTime(2026-09-11T15:02:04.348596Z), signedBy=Set(122038b10468...)
+2026-09-11 16:42:38,446 [canton-env-ec-29] INFO  c.d.c.t.p.TopologyStateProcessorOld:participant=sandbox/psid=mysynchronizer::122070a47a88::34-0 tid:7ee5f42947261a7a2afa8a88146980a8 - Enqueued topology transactions:
+ValidatedTopologyTransaction(
+  SignedTopologyTransaction(
+    TopologyTransaction(
+      PartyToParticipant(ballast-market::122038b10468..., PositiveNumeric(1), List(HostingParticipant(PAR::sandbox::122038b10468..., Submission, false)), None),
+      serial = 1,
+      operation = Replace,
+      hash = SHA-256:f8003db382c4...
+    ),
+    signatures = 122038b10468...
+  )
+)
+2026-09-11 16:42:38,560 [canton-env-ec-32] INFO  c.d.c.s.s.s.GrpcSequencerService:sequencer=sequencer1 tid:eb8472bbb673403870b9c9b2e2323f34 - 'PAR::sandbox::122038b10468...' sends request with id '9513e6fb-a0ff-4dfe-9bf2-499d8841eba6' of size 652 bytes with 1 envelopes.
+2026-09-11 16:42:38,624 [canton-env-ec-30] INFO  c.d.c.s.b.u.BlockChunkProcessor:sequencer=sequencer1/psid=mysynchronizer::122070a47a88::34-0 tid:eb8472bbb673403870b9c9b2e2323f34 - Processing block 32, data chunk 0. Last chunk timestamp=2026-09-11T15:03:40.961961Z, last sequencer event timestamp=Some(2026-09-11T15:02:04.348595Z). 1 events:
+  Send of '9513e6fb-a0ff-4dfe-9bf2-499d8841eba6' at 2026-09-11T15:42:38.575324Z (tc=eb8472bbb673403870b9c9b2e2323f34)
+2026-09-11 16:42:38,688 [canton-env-ec-30] INFO  c.d.c.p.p.ParallelMessageDispatcher:participant=sandbox/psid=mysynchronizer::122070a47a88::34-0 tid:eb8472bbb673403870b9c9b2e2323f34 - Processing event at sc=26, ts=2026-09-11T15:42:38.575324Z, messageId=9513e6fb-a0ff-4dfe-9bf2-499d8841eba6, with 1 envelopes
+  topo-bcast with ntx=1
+2026-09-11 16:42:38,692 [canton-env-ec-30] INFO  c.d.c.t.p.TopologyStateProcessorOld:mediator=mediator1/psid=mysynchronizer::122070a47a88::34-0 tid:eb8472bbb673403870b9c9b2e2323f34 - Storing topology transaction 1/1 TxHash(SHA-256:f8003db382c4...) with ts=EffectiveTime(2026-09-11T15:42:38.575324Z), signedBy=Set(122038b10468...)
+2026-09-11 16:42:38,694 [canton-env-ec-30] INFO  c.d.c.t.p.TopologyStateProcessorOld:mediator=mediator1/psid=mysynchronizer::122070a47a88::34-0 tid:eb8472bbb673403870b9c9b2e2323f34 - Persisted topology transactions (SequencedTime(2026-09-11T15:42:38.575324Z), EffectiveTime(2026-09-11T15:42:38.575324Z)):
+ValidatedTopologyTransaction(
+  SignedTopologyTransaction(
+    TopologyTransaction(
+      PartyToParticipant(ballast-market::122038b10468..., PositiveNumeric(1), Vector(HostingParticipant(PAR::sandbox::122038b10468..., Submission, false)), None),
+      serial = 1,
+      operation = Replace,
+      hash = SHA-256:f8003db382c4...
+    ),
+    signatures = 122038b10468...
+  )
+)
+2026-09-11 16:42:38,695 [canton-env-ec-64] INFO  c.d.c.t.p.TopologyStateProcessorOld:participant=sandbox/psid=mysynchronizer::122070a47a88::34-0 tid:eb8472bbb673403870b9c9b2e2323f34 - Storing topology transaction 1/1 TxHash(SHA-256:f8003db382c4...) with ts=EffectiveTime(2026-09-11T15:42:38.575324Z), signedBy=Set(122038b10468...)
+2026-09-11 16:42:38,696 [canton-env-ec-64] INFO  c.d.c.t.p.TopologyStateProcessorOld:participant=sandbox/psid=mysynchronizer::122070a47a88::34-0 tid:eb8472bbb673403870b9c9b2e2323f34 - Persisted topology transactions (SequencedTime(2026-09-11T15:42:38.575324Z), EffectiveTime(2026-09-11T15:42:38.575324Z)):
+ValidatedTopologyTransaction(
+  SignedTopologyTransaction(
+    TopologyTransaction(
+      PartyToParticipant(ballast-market::122038b10468..., PositiveNumeric(1), Vector(HostingParticipant(PAR::sandbox::122038b10468..., Submission, false)), None),
+      serial = 1,
+      operation = Replace,
+      hash = SHA-256:f8003db382c4...
+    ),
+    signatures = 122038b10468...
+  )
+)
+2026-09-11 16:42:38,702 [canton-env-ec-29] INFO  c.d.c.t.p.TopologyStateProcessorOld:sequencer=sequencer1/psid=mysynchronizer::122070a47a88::34-0 tid:eb8472bbb673403870b9c9b2e2323f34 - Storing topology transaction 1/1 TxHash(SHA-256:f8003db382c4...) with ts=EffectiveTime(2026-09-11T15:42:38.575324Z), signedBy=Set(122038b10468...)
+2026-09-11 16:42:38,716 [canton-env-ec-29] INFO  c.d.c.t.p.TopologyStateProcessorOld:sequencer=sequencer1/psid=mysynchronizer::122070a47a88::34-0 tid:eb8472bbb673403870b9c9b2e2323f34 - Persisted topology transactions (SequencedTime(2026-09-11T15:42:38.575324Z), EffectiveTime(2026-09-11T15:42:38.575324Z)):
+ValidatedTopologyTransaction(
+  SignedTopologyTransaction(
+    TopologyTransaction(
+      PartyToParticipant(ballast-market::122038b10468..., PositiveNumeric(1), Vector(HostingParticipant(PAR::sandbox::122038b10468..., Submission, false)), None),
+      serial = 1,
+      operation = Replace,
+      hash = SHA-256:f8003db382c4...
+    ),
+    signatures = 122038b10468...
+  )
+)
+2026-09-11 16:42:38,875 [daml.participant.api.index.db.threadpool.connection.api-server-0] INFO  c.d.c.l.l.PersistentPartyRecordStore:participant=sandbox tid:7ee5f42947261a7a2afa8a88146980a8 - Created new party record in participant local store: PartyRecord(party=ballast-market::122038b104682a36574185fc89869151cd5ec99ef7962f2eadbce8dda1e389167878, metadata=ObjectMeta(None,Map()), identityProviderId=Default)
+2026-09-11 16:42:38,912 [daml.participant.api.index.db.threadpool.connection.api-server-0] INFO  c.d.c.l.l.PersistentUserManagementStore:participant=sandbox tid:1306278769723c8a72426110e3776c97 - Granted 2 user rights to user participant_admin: CanActAs(ballast-vault::122038b104682a36574185fc89869151cd5ec99ef7962f2eadbce8dda1e389167878), CanReadAs(ballast-market::122038b104682a36574185fc89869151cd5ec99ef7962f2eadbce8dda1e389167878), submissionId -> 'a1adb1f9-1f7f-4ff7-8a1e-b51bfa390bf6'.
+2026-09-11 16:42:46,335 [canton-env-ec-31] INFO  c.d.c.s.b.u.BlockChunkProcessor:sequencer=sequencer1/psid=mysynchronizer::122070a47a88::34-0 tid:1743e765b63ed3c8f57a9b91b03fd6ce - Processing block 33, data chunk 0. Last chunk timestamp=2026-09-11T15:42:38.575324Z, last sequencer event timestamp=Some(2026-09-11T15:42:38.575324Z). 1 events:
+  Ack by SEQ::sequencer1::1220cdcac772... for 2026-09-11T15:42:38.575324Z
+2026-09-11 16:42:47,652 [canton-env-ec-29] INFO  c.d.c.s.b.u.BlockChunkProcessor:sequencer=sequencer1/psid=mysynchronizer::122070a47a88::34-0 tid:fc4f8270bde1e1a1dcc4ed9f77a692aa - Processing block 34, data chunk 0. Last chunk timestamp=2026-09-11T15:42:38.575324Z, last sequencer event timestamp=Some(2026-09-11T15:42:38.575324Z). 1 events:
+  Ack by MED::mediator1::12205774a822... for 2026-09-11T15:42:38.575324Z
+2026-09-11 16:42:49,723 [canton-env-ec-30] INFO  c.d.c.s.b.u.BlockChunkProcessor:sequencer=sequencer1/psid=mysynchronizer::122070a47a88::34-0 tid:ff9cdc2813b90062f6338565cc295cd7 - Processing block 35, data chunk 0. Last chunk timestamp=2026-09-11T15:42:38.575324Z, last sequencer event timestamp=Some(2026-09-11T15:42:38.575324Z). 1 events:
+  Ack by PAR::sandbox::122038b10468... for 2026-09-11T15:42:38.575324Z
+2026-09-11 16:42:59,091 [canton-env-ec-32] INFO  c.d.c.p.a.s.a.ApiPartyManagementService:participant=sandbox tid:6a2996e55fd29287010bbf81c4ecd8e0 - Listing known parties.
+2026-09-11 16:42:59,152 [canton-env-ec-32] INFO  c.d.c.p.a.s.ApiStateService:participant=sandbox tid:cd71b57da2786da9dd38fbd250c652e1 - Received request for active contracts: GetActiveContractsRequest(43,Some(EventFormat(Map(ballast-manager::122038b104682a36574185fc89869151cd5ec99ef7962f2eadbce8dda1e389167878 -> Filters(Vector())),None,false))), filters -> {ballast-manager::122038b104682a36574185fc89869151cd5ec99ef7962f2eadbce8dda1e389167878: {templates: [], interfaces: [], all-templates, created_event_blob: false}}.
+2026-09-11 16:42:59,236 [canton-env-ec-32] INFO  c.d.c.p.a.s.ApiStateService:participant=sandbox tid:26c2c3c99bbd56e970e22166c32f4a36 - Received request for active contracts: GetActiveContractsRequest(43,Some(EventFormat(Map(ballast-vault::122038b104682a36574185fc89869151cd5ec99ef7962f2eadbce8dda1e389167878 -> Filters(Vector())),None,false))), filters -> {ballast-vault::122038b104682a36574185fc89869151cd5ec99ef7962f2eadbce8dda1e389167878: {templates: [], interfaces: [], all-templates, created_event_blob: false}}.
+2026-09-11 16:42:59,307 [canton-env-ec-32] INFO  c.d.c.p.a.s.ApiStateService:participant=sandbox tid:0b9ea02dbe3429ab43e5955c88fb7a3b - Received request for active contracts: GetActiveContractsRequest(43,Some(EventFormat(Map(ballast-alice::122038b104682a36574185fc89869151cd5ec99ef7962f2eadbce8dda1e389167878 -> Filters(Vector())),None,false))), filters -> {ballast-alice::122038b104682a36574185fc89869151cd5ec99ef7962f2eadbce8dda1e389167878: {templates: [], interfaces: [], all-templates, created_event_blob: false}}.
+2026-09-11 16:42:59,338 [canton-env-ec-64] INFO  c.d.c.p.a.s.ApiStateService:participant=sandbox tid:8968ecd8926ffc6809aa3e0194925ecb - Received request for active contracts: GetActiveContractsRequest(43,Some(EventFormat(Map(ballast-lp::122038b104682a36574185fc89869151cd5ec99ef7962f2eadbce8dda1e389167878 -> Filters(Vector())),None,false))), filters -> {ballast-lp::122038b104682a36574185fc89869151cd5ec99ef7962f2eadbce8dda1e389167878: {templates: [], interfaces: [], all-templates, created_event_blob: false}}.
+2026-09-11 16:42:59,371 [canton-env-ec-32] INFO  c.d.c.p.a.s.ApiStateService:participant=sandbox tid:c15d3821c0967351846461124c4393f2 - Received request for active contracts: GetActiveContractsRequest(43,Some(EventFormat(Map(ballast-market::122038b104682a36574185fc89869151cd5ec99ef7962f2eadbce8dda1e389167878 -> Filters(Vector())),None,false))), filters -> {ballast-market::122038b104682a36574185fc89869151cd5ec99ef7962f2eadbce8dda1e389167878: {templates: [], interfaces: [], all-templates, created_event_blob: false}}.
+2026-09-11 16:42:59,684 [canton-env-ec-29] INFO  c.d.c.p.a.s.a.ApiPartyManagementService:participant=sandbox tid:12538e527d3f71fc42f5e5757a5115e0 - Listing known parties.
+2026-09-11 16:42:59,749 [daml.participant.api.index.db.threadpool.connection.api-server-0] INFO  c.d.c.l.l.PersistentUserManagementStore:participant=sandbox tid:1aa3ef142ad71cc7d7b124dbf8660835 - Revoked 1 user rights from user participant_admin: CanActAs(ballast-vault::122038b104682a36574185fc89869151cd5ec99ef7962f2eadbce8dda1e389167878), submissionId -> 'ea336e08-670e-4b99-a587-4ea3ec1fd86e'.
+2026-09-11 16:43:24,625 [canton-env-ec-32] INFO  c.d.c.p.a.s.a.ApiPartyManagementService:participant=sandbox tid:389da38df17ef433ad6e611d97d7d27d - Listing known parties.
+2026-09-11 16:43:24,654 [canton-env-ec-32] INFO  c.d.c.p.a.s.ApiStateService:participant=sandbox tid:f2637ebfb3d194c5c9239248f1a67c3e - Received request for active contracts: GetActiveContractsRequest(43,Some(EventFormat(Map(ballast-manager::122038b104682a36574185fc89869151cd5ec99ef7962f2eadbce8dda1e389167878 -> Filters(Vector())),None,false))), filters -> {ballast-manager::122038b104682a36574185fc89869151cd5ec99ef7962f2eadbce8dda1e389167878: {templates: [], interfaces: [], all-templates, created_event_blob: false}}.
+2026-09-11 16:43:24,689 [canton-env-ec-32] INFO  c.d.c.p.a.s.ApiStateService:participant=sandbox tid:f0956b368e6db13559e75eeef1f0bcf5 - Received request for active contracts: GetActiveContractsRequest(43,Some(EventFormat(Map(ballast-vault::122038b104682a36574185fc89869151cd5ec99ef7962f2eadbce8dda1e389167878 -> Filters(Vector())),None,false))), filters -> {ballast-vault::122038b104682a36574185fc89869151cd5ec99ef7962f2eadbce8dda1e389167878: {templates: [], interfaces: [], all-templates, created_event_blob: false}}.
+2026-09-11 16:43:24,727 [canton-env-ec-29] INFO  c.d.c.p.a.s.ApiStateService:participant=sandbox tid:6064abe3d8a462d707c7dc0ced2d7926 - Received request for active contracts: GetActiveContractsRequest(43,Some(EventFormat(Map(ballast-alice::122038b104682a36574185fc89869151cd5ec99ef7962f2eadbce8dda1e389167878 -> Filters(Vector())),None,false))), filters -> {ballast-alice::122038b104682a36574185fc89869151cd5ec99ef7962f2eadbce8dda1e389167878: {templates: [], interfaces: [], all-templates, created_event_blob: false}}.
+2026-09-11 16:43:24,756 [canton-env-ec-29] INFO  c.d.c.p.a.s.ApiStateService:participant=sandbox tid:1cb8aec42aa4e89559e6c868009e5009 - Received request for active contracts: GetActiveContractsRequest(43,Some(EventFormat(Map(ballast-lp::122038b104682a36574185fc89869151cd5ec99ef7962f2eadbce8dda1e389167878 -> Filters(Vector())),None,false))), filters -> {ballast-lp::122038b104682a36574185fc89869151cd5ec99ef7962f2eadbce8dda1e389167878: {templates: [], interfaces: [], all-templates, created_event_blob: false}}.
+2026-09-11 16:43:24,777 [canton-env-ec-29] INFO  c.d.c.p.a.s.ApiStateService:participant=sandbox tid:fe95b6cfd70e654adc252279ac4f0206 - Received request for active contracts: GetActiveContractsRequest(43,Some(EventFormat(Map(ballast-market::122038b104682a36574185fc89869151cd5ec99ef7962f2eadbce8dda1e389167878 -> Filters(Vector())),None,false))), filters -> {ballast-market::122038b104682a36574185fc89869151cd5ec99ef7962f2eadbce8dda1e389167878: {templates: [], interfaces: [], all-templates, created_event_blob: false}}.
