@@ -18,7 +18,7 @@ async function post<T>(c: Conn, path: string, body?: unknown): Promise<T> {
   const res = await fetch(`${c.baseUrl}${path}`, {
     method: body === undefined ? "GET" : "POST",
     headers: {
-      Authorization: `Bearer ${token}`,
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(body === undefined ? {} : { "Content-Type": "application/json" }),
     },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
@@ -134,3 +134,21 @@ export const timestamp = (d: Date = new Date()): string => d.toISOString();
 
 /** Daml's `(a, b)` is DA.Types.Tuple2, which the JSON API spells with _1/_2. */
 export const tuple2 = <A, B>(_1: A, _2: B) => ({ _1, _2 });
+
+/**
+ * Read the main package id out of a DAR.
+ *
+ * A package id is derived from the package's content, so it changes every time the Daml
+ * changes — which makes a hardcoded constant a bug with a delay on it. (It was: the id was
+ * captured before two modules were added, and formation then failed against a ledger that had
+ * the DAR loaded, reporting the template as missing.)
+ *
+ * A DAR is a zip, and zip stores entry names as plain text in its headers, so the id can be
+ * read straight out of the bytes without unpacking anything or taking a dependency.
+ */
+export function packageIdFromDar(dar: Uint8Array, packageName: string): string {
+  const text = Buffer.from(dar).toString("latin1");
+  const m = text.match(new RegExp(`${packageName}-[0-9.]+-([0-9a-f]{64})\\.dalf`));
+  if (!m?.[1]) throw new Error(`could not find the package id for ${packageName} in the DAR`);
+  return m[1];
+}

@@ -8,13 +8,21 @@
 //   npm run formation -- --plan
 //   npm run formation -- --apply
 
+import { readFile } from "node:fs/promises";
 import { connFromEnv, listParties } from "./ledger.ts";
-import { create, int64, relTime, templateId, timestamp, tuple2 } from "./commands.ts";
+import { create, int64, packageIdFromDar, relTime, templateId, timestamp, tuple2 } from "./commands.ts";
 
-/** Package id of the uploaded `ballast` DAR. Content-derived, so it is stable for a given build. */
-const PKG = process.env.BALLAST_PKG ?? "6d6d9b5483d4203423b31479384bdeba0c64aaaea037a3336a1a555c410b15a1";
+const DAR = "../../ledger/ballast/.daml/dist/ballast-0.1.0.dar";
 
-const tid = (module: string, entity: string) => templateId(PKG, `Ballast.${module}`, entity);
+/**
+ * Package ids are derived from package CONTENT, so they change whenever the Daml does. Reading
+ * it from the DAR that is actually deployed keeps the two from drifting; an env override is
+ * there for pointing at a package built elsewhere, such as by Seaport's own build runner.
+ */
+async function packageId(): Promise<string> {
+  if (process.env.BALLAST_PKG) return process.env.BALLAST_PKG;
+  return packageIdFromDar(await readFile(new URL(DAR, import.meta.url)), "ballast");
+}
 
 const FUND_ID = process.env.BALLAST_FUND_ID ?? "BALLAST-01";
 
@@ -25,6 +33,8 @@ async function main() {
     process.exit(2);
   }
   const c = connFromEnv();
+  const PKG = await packageId();
+  const tid = (module: string, entity: string) => templateId(PKG, `Ballast.${module}`, entity);
   const all = await listParties(c);
   const need = (hint: string): string => {
     const p = all.find((x) => x.startsWith(`${hint}::`));

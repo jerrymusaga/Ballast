@@ -50,6 +50,18 @@ Formation is the one exception: creating the `Fund` and `Mandate` genuinely need
 signature. Provisioning grants it, and `npm run provision:formation-done` checks it has since
 been dropped, failing loudly if it has not.
 
+## Against a local sandbox, with no credentials at all
+
+The whole deploy path runs against a real participant node without a hosted validator:
+
+    cd ledger && daml sandbox --json-api-port 7575 --dar ballast/.daml/dist/ballast-0.1.0.dar
+    cd keeper && LEDGER_API_URL=http://localhost:7575 npm run provision:apply
+
+With no `OIDC_CLIENT_SECRET` set, the client runs unauthenticated, which is how a sandbox
+expects to be talked to. This is worth doing before touching a hosted validator: Daml Script
+runs an in-memory ledger inside the compiler, and a real participant enforces things it does
+not — three genuine bugs turned up this way that no script could have caught.
+
 ## Bringing a fund up
 
     npm run provision:plan          # upload the DAR, allocate parties, grant rights

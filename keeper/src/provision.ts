@@ -22,7 +22,7 @@
 import { readFile } from "node:fs/promises";
 import {
   type Conn, type Right,
-  connFromEnv, grantRights, listPackages, listParties, listRights,
+  connFromEnv, grantRights, listPackages, listParties, listRights, revokeRights,
   allocateParty, uploadDar, version,
 } from "./ledger.ts";
 
@@ -116,29 +116,41 @@ async function main() {
 }
 
 /**
- * Revoke the vault's actAs grant once formation is done.
+ * Revoke the vault's formation-time actAs grant.
  *
- * The API grants rights but this build has no verified revoke call, so this reports what must
- * be true rather than pretending to have done it. Leaving actAs on the vault in place is the
- * single worst configuration mistake available here, so it fails loudly rather than quietly.
+ * This is the step that turns the mandate from a description into a constraint. While the
+ * submitting user can act as the vault, the manager can move fund assets directly and the
+ * policy contract guarantees nothing — so this verifies the outcome rather than trusting the
+ * call, and exits non-zero if the grant is still there.
  */
 async function dropFormationRights(c: Conn, apply: boolean) {
-  const current = await listRights(c);
-  const json = JSON.stringify(current);
-  const vaultActAs = /CanActAs[^}]*ballast-vault/.test(json);
-  console.log(`\nvault actAs currently granted: ${vaultActAs ? "YES" : "no"}`);
-  if (!vaultActAs) {
-    console.log("✓ the manager cannot act as the vault — the mandate binds.");
+  const parties = await listParties(c);
+  const vault = parties.find((p) => p.startsWith("ballast-vault::"));
+  if (!vault) throw new Error("ballast-vault is not allocated on this validator");
+
+  const granted = async () => /CanActAs[^}]*ballast-vault/.test(JSON.stringify(await listRights(c)));
+
+  if (!(await granted())) {
+    console.log("\n✓ the manager cannot act as the vault — the mandate binds.");
     return;
   }
-  console.error(
-    "\n✗ The submitting user can still act as the vault.\n" +
-      "  While that is true, the manager can move fund assets without the mandate's\n" +
-      "  approval and the policy contract guarantees nothing.\n\n" +
-      "  Revoke it before demoing or deploying anything on top:\n" +
-      `    DELETE ${c.baseUrl}/v2/users/${c.userId}/rights  (body: the CanActAs vault right)\n`,
-  );
-  if (apply) process.exit(1);
+  if (!apply) {
+    console.log("\nvault actAs is still granted; would revoke it.");
+    return;
+  }
+
+  await revokeRights(c, [{ kind: "actAs", party: vault }]);
+
+  // Verify, rather than trust the response. This control is worth a second round trip.
+  if (await granted()) {
+    console.error(
+      "\n✗ Revoke reported success but the vault actAs right is STILL granted.\n" +
+        "  Do not deploy or demo on top of this: the manager can move fund assets without\n" +
+        "  the mandate's approval and the policy contract guarantees nothing.",
+    );
+    process.exit(1);
+  }
+  console.log("\n✓ vault actAs revoked and verified gone — the mandate now binds.");
 }
 
 main().catch((e) => {
