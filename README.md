@@ -134,6 +134,7 @@ Canton makes it *cheap and native*, not that it is the only place it is *conceiv
 ## Layout
 
 ```
+keeper/          the off-ledger drift watcher — proposes, never decides
 ledger/
   dars/           real CIP-56 interface DARs (Apache-2.0, Digital Asset), vendored
   ballast/        the product package — NO token template, NO daml-script
@@ -167,7 +168,8 @@ not on the DevNet where real cBTC and cETH exist. Targeting v2 would mean holdin
 ## Status
 
 ```
-cd ledger && daml build --all && cd ballast-test && daml test
+cd ledger && daml build --all && cd ballast-test && daml test   # 19 scripts
+cd keeper && npm test                                           # 10 tests, no deps
 ```
 
 Proven so far, on **real CIP-56 `Holding` and `Allocation` interface contracts**, in 19 scripts:
@@ -229,4 +231,6 @@ Proven so far, on **real CIP-56 `Holding` and `Allocation` interface contracts**
 - **NAV still leaks the portfolio, slowly.** Nothing above changes the linear algebra. Breadth,
   cadence and rounding remain the dials.
 
-Not built yet: the keeper.
+Not built yet: the keeper's ledger client. `keeper/` decides *what* to propose and is tested
+against the same fixtures as the Daml suite; submitting it over the JSON Ledger API, and the
+live price feed behind it, come with deployment.

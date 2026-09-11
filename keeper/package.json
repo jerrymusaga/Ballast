@@ -1,0 +1,11 @@
+{
+  "name": "ballast-keeper",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Off-ledger drift watcher for Ballast. Proposes; never decides.",
+  "engines": { "node": ">=22.6" },
+  "scripts": {
+    "test": "node --test --experimental-strip-types test/*.test.ts"
+  }
+}
