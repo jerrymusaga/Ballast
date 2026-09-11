@@ -1,0 +1,34 @@
+Ballast
+Copyright 2026 Jerry Musaga
+
+Licensed under the Apache License, Version 2.0. See LICENSE.
+
+────────────────────────────────────────────────────────────────────────────
+Third-party components
+────────────────────────────────────────────────────────────────────────────
+
+ledger/dars/splice-api-token-*-v1-1.0.0.dar
+
+  The Canton Token Standard (CIP-0056) on-ledger interface packages, vendored
+  unmodified so this repository builds without additional setup.
+
+  Copyright (c) 2024 Digital Asset (Switzerland) GmbH and/or its affiliates.
+  Licensed under the Apache License, Version 2.0.
+
+  Package ids verified identical to those pinned by Splice 0.8.0
+  (daml/dars.lock), the current release at time of vendoring.
+
+────────────────────────────────────────────────────────────────────────────
+A note on provenance, since the question is reasonable
+────────────────────────────────────────────────────────────────────────────
+
+These DARs are commonly encountered alongside the OpenZeppelin Canton token
+template, which is licensed AGPL-3.0. Ballast takes no code from it.
+
+The interface DARs themselves are Apache-2.0 artifacts published by Digital
+Asset, and redistributing them carries no copyleft obligation. The only token
+implementation in this repository is ledger/ballast-test/daml/Ballast/Testing/
+Registry.daml, which is original work written for this project's test suite and
+never ships in the deployed package.
+
+Ballast therefore has no AGPL obligation.
