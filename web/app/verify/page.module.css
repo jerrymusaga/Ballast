@@ -1,28 +1,12 @@
-.main { padding: 62px 0 96px; }
-.h1 { font-family: var(--font-serif); font-size: clamp(30px, 4.4vw, 44px); margin-top: 16px; letter-spacing: -0.03em; }
-.lede { margin-top: 16px; margin-bottom: 40px; color: var(--ink-2); font-size: 16px; max-width: 72ch; line-height: 1.62; }
-
-.steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 1px; background: var(--line-soft); border: 1px solid var(--line); border-radius: var(--r-lg); overflow: hidden; }
-
-.step { display: grid; grid-template-columns: 46px 1fr; gap: 10px; padding: 26px; background: var(--surface); }
-.num { font-size: 12px; color: var(--brass); padding-top: 4px; }
-.body h2 { font-size: 17px; font-weight: 600; margin-bottom: 9px; letter-spacing: -0.015em; }
-.body p { color: var(--ink-2); font-size: 14.5px; line-height: 1.62; max-width: 76ch; }
-
-.code {
-  margin: 14px 0 0;
-  padding: 13px 16px;
-  background: var(--ground);
-  border: 1px solid var(--line-soft);
-  border-radius: var(--r-sm);
-  font-size: 12.5px;
-  color: var(--ink-2);
-  overflow-x: auto;
-}
-
-.link { display: inline-flex; align-items: center; gap: 7px; margin-top: 14px; font-size: 13.5px; color: var(--brass); }
+.main { padding: 18px 0 40px; }
+.lede { padding: 14px; border-bottom: 1px solid var(--line); max-width: 92ch; }
+.steps { list-style: none; margin: 0; padding: 0; }
+.step { display: grid; grid-template-columns: 42px 1fr; gap: 10px; padding: 16px 14px; border-bottom: 1px solid var(--line); }
+.step:last-child { border-bottom: none; }
+.num { font-size: 11px; color: var(--amber); padding-top: 2px; }
+.t { font-size: 11px; letter-spacing: 0.14em; color: var(--ink); margin-bottom: 8px; }
+.code { margin: 12px 0 0; padding: 9px 12px; background: var(--bg); border: 1px solid var(--line); font-size: 11.5px; color: var(--cyan); overflow-x: auto; }
+.link { display: inline-block; margin-top: 12px; font-size: 10.5px; letter-spacing: 0.14em; color: var(--amber); }
 .link:hover { text-decoration: underline; text-underline-offset: 3px; }
-
-.source { margin-top: 30px; display: flex; gap: 12px; flex-wrap: wrap; font-size: 13.5px; color: var(--ink-3); }
-.source a { color: var(--brass); }
-.source a:hover { text-decoration: underline; text-underline-offset: 3px; }
+.src { display: flex; gap: 14px; align-items: center; padding: 12px 14px; border-top: 1px solid var(--line-2); font-size: 10px; letter-spacing: 0.14em; color: var(--ink-4); }
+.src a { color: var(--cyan); letter-spacing: 0; font-size: 11px; }

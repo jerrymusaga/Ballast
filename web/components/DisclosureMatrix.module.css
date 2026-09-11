@@ -1,0 +1,59 @@
+.scroll { overflow-x: auto; }
+
+.grid { min-width: 620px; font-size: 12px; }
+
+.corner, .col {
+  border-bottom: 1px solid var(--line-2);
+  padding: 7px 10px;
+  font-weight: 500;
+  text-align: center;
+  vertical-align: bottom;
+}
+.corner { text-align: left; font-size: 10px; letter-spacing: 0.14em; color: var(--ink-3); width: 1%; white-space: nowrap; }
+
+.col { border-left: 1px solid var(--line); }
+.colName { display: block; font-size: 10.5px; letter-spacing: 0.12em; color: var(--ink-2); }
+.colRole { display: block; font-size: 9.5px; color: var(--ink-4); margin-top: 2px; letter-spacing: 0.04em; }
+.colFocus { background: var(--amber-wash); }
+.colFocus .colName { color: var(--amber); }
+
+.rowHead {
+  text-align: left;
+  font-weight: 400;
+  padding: 0 10px;
+  height: var(--row);
+  color: var(--ink-2);
+  white-space: nowrap;
+  border-bottom: 1px solid var(--line);
+}
+
+.cell {
+  text-align: center;
+  height: var(--row);
+  border-left: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  width: 15%;
+}
+.cellFocus { background: var(--amber-wash); }
+
+.dot { color: var(--cyan); font-size: 11px; }
+.dotSecret { color: var(--amber); font-size: 11px; }
+.blank { color: var(--ink-4); }
+
+.secretRow .rowHead { color: var(--amber); }
+
+.priv {
+  margin-left: 8px;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  color: var(--amber);
+  border: 1px solid var(--amber-dim);
+  padding: 0 4px;
+}
+
+.totals th, .totals td { border-bottom: none; border-top: 1px solid var(--line-2); }
+.totals .rowHead { font-size: 10px; letter-spacing: 0.14em; color: var(--ink-3); }
+.total { color: var(--ink); font-size: 14px; }
+.zero { color: var(--ink-4); font-size: 14px; }
+
+.none { padding: 20px; color: var(--ink-3); font-size: 12px; }

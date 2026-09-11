@@ -6,14 +6,22 @@ import { useEffect, useState } from "react";
 import s from "./Header.module.css";
 
 const NAV = [
-  { href: "/", label: "Overview" },
-  { href: "/lenses", label: "Lenses" },
-  { href: "/verify", label: "Verify" },
+  { key: "F1", href: "/", label: "OVERVIEW" },
+  { key: "F2", href: "/lenses", label: "LENSES" },
+  { key: "F3", href: "/verify", label: "VERIFY" },
 ];
 
 export default function Header() {
   const path = usePathname();
   const [health, setHealth] = useState<{ ok: boolean; version: string | null } | null>(null);
+  const [clock, setClock] = useState("");
+
+  useEffect(() => {
+    const tick = () => setClock(new Date().toISOString().slice(11, 19) + "Z");
+    tick();
+    const t = setInterval(tick, 1000);
+    return () => clearInterval(t);
+  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -34,27 +42,26 @@ export default function Header() {
   return (
     <header className={s.top}>
       <div className={`wrap ${s.bar}`}>
-        <Link href="/" className={s.brand} aria-label="Ballast home">
-          <svg viewBox="0 0 24 24" fill="none" aria-hidden className={s.mark}>
-            <path d="M12 4.6v15.2M12 3a1.9 1.9 0 100 3.8A1.9 1.9 0 0012 3zM4.8 12.2a7.2 7.2 0 0014.4 0M3.4 12.2h2.8M17.8 12.2h2.8"
-              stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-          </svg>
-          <span>Ballast</span>
+        <Link href="/" className={s.brand}>
+          <span className={s.mark}>▮</span>BALLAST
         </Link>
+        <span className={s.sep} />
+        <span className={s.fund}>BALLAST-01</span>
+        <span className={s.desc}>PRIVATE INDEX FUND · CANTON</span>
 
         <nav className={s.nav}>
           {NAV.map((n) => (
-            <Link key={n.href} href={n.href} className={path === n.href ? `${s.link} ${s.on}` : s.link}>
+            <Link key={n.href} href={n.href} className={path === n.href ? `${s.key} ${s.on}` : s.key}>
+              <span className={s.keyNum}>{n.key}</span>
               {n.label}
             </Link>
           ))}
         </nav>
 
-        <div className={s.status} title={health?.ok ? "Connected to a Canton participant" : "No ledger reachable"}>
+        <div className={s.stat}>
           <span className={`${s.dot} ${health === null ? s.idle : health.ok ? s.live : s.down}`} />
-          <span className="mono" style={{ fontFamily: "var(--font-mono)" }}>
-            {health === null ? "connecting" : health.ok ? `canton ${health.version}` : "no ledger"}
-          </span>
+          <span>{health === null ? "LINK…" : health.ok ? `CANTON ${health.version}` : "NO LINK"}</span>
+          <span className={s.clock}>{clock}</span>
         </div>
       </div>
     </header>

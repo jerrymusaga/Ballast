@@ -1,4 +1,6 @@
+import DisclosureMatrix from "@/components/DisclosureMatrix";
 import LensExplorer from "@/components/LensExplorer";
+import Panel from "@/components/Panel";
 import { readLenses, type Lens } from "@/lib/lenses";
 import s from "./page.module.css";
 
@@ -6,34 +8,49 @@ export const dynamic = "force-dynamic";
 
 export default async function LensesPage() {
   let lenses: Lens[] = [];
+  let ledger = "";
   let error: string | null = null;
   try {
-    lenses = (await readLenses()).lenses;
+    const d = await readLenses();
+    lenses = d.lenses;
+    ledger = d.ledger;
   } catch (e) {
     error = e instanceof Error ? e.message : String(e);
+  }
+
+  if (error) {
+    return (
+      <main className={s.main}>
+        <div className="wrap">
+          <Panel code="!!" title="No ledger connected">
+            <p className={`prose ${s.err}`}>
+              The lenses are read from a live participant node, so there is deliberately nothing
+              to show without one.
+            </p>
+            <pre className={s.trace}>{error}</pre>
+          </Panel>
+        </div>
+      </main>
+    );
   }
 
   return (
     <main className={s.main}>
       <div className="wrap">
-        <p className="eyebrow">Live from the ledger</p>
-        <h1 className={s.h1}>The lenses</h1>
-        <p className={s.lede}>
-          Pick a party. What you see is what Canton is willing to show them — one
-          active-contract-set query per party, returned unmodified. This page could not reveal
-          the mandate to an investor if it wanted to, because the ledger does not return it.
-        </p>
+        <Panel
+          code="02"
+          title="Disclosure matrix"
+          right={<>LIVE · {ledger.replace(/^https?:\/\//, "")}</>}
+          flush
+        >
+          <DisclosureMatrix lenses={lenses} />
+          <p className={`prose ${s.note}`}>
+            One active-contract-set query per party, rendered unmodified. This page could not
+            reveal the mandate to an investor if it tried — the ledger does not return it.
+          </p>
+        </Panel>
 
-        {error ? (
-          <div className={s.offline}>
-            <h2>No ledger connected</h2>
-            <p>The lenses are read from a live participant node, so there is deliberately nothing
-               to show without one.</p>
-            <code className={s.err} style={{ fontFamily: "var(--font-mono)" }}>{error}</code>
-          </div>
-        ) : (
-          <LensExplorer initial={lenses} />
-        )}
+        <LensExplorer initial={lenses} />
       </div>
     </main>
   );

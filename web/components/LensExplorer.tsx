@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Panel from "@/components/Panel";
 import type { Lens } from "@/lib/lenses";
 import s from "./LensExplorer.module.css";
 
@@ -40,26 +41,27 @@ export default function LensExplorer({ initial }: { initial: Lens[] }) {
             className={`${s.tab} ${l.id === selected ? s.on : ""}`}
             onClick={() => setSelected(l.id)}
           >
-            <span className={s.tabLabel}>{l.label}</span>
-            <span className={`${s.tabCount} ${l.count === 0 ? s.zero : ""}`} style={{ fontFamily: "var(--font-mono)" }}>
+            <span className={s.tabLabel}>{l.label.toUpperCase()}</span>
+            <span className={`${s.tabCount} ${l.count === 0 ? s.zero : ""}`}>
               {l.party ? l.count : "—"}
             </span>
+            <span className={s.tabRole}>{l.count === 0 ? "sees nothing" : l.role.toLowerCase()}</span>
           </button>
         ))}
       </div>
 
       {active && (
-        <section className={s.panel} aria-live="polite">
+        <Panel
+          code={String(lenses.findIndex((l) => l.id === active.id) + 1).padStart(2, "0")}
+          title={`${active.label} — active contract set`}
+          right={<>{active.count} VISIBLE</>}
+          flush
+        >
           <header className={s.head}>
-            <div>
-              <h2 className={s.title}>{active.label}</h2>
-              <p className={s.blurb}>{active.blurb}</p>
-            </div>
+            <p className={`prose ${s.blurb}`}>{active.blurb}</p>
             <div className={s.meta}>
-              <span className={s.metaLabel}>party</span>
-              <code className={s.party} style={{ fontFamily: "var(--font-mono)" }}>
-                {active.party ? shortParty(active.party) : "not allocated"}
-              </code>
+              <span className={s.metaLabel}>PARTY</span>
+              <code className={s.party}>{active.party ? shortParty(active.party) : "not allocated"}</code>
             </div>
           </header>
 
@@ -75,17 +77,17 @@ export default function LensExplorer({ initial }: { initial: Lens[] }) {
           ) : (
             <table className={s.table}>
               <thead>
-                <tr><th>Contract</th><th>Value</th><th className={s.right}>Detail</th></tr>
+                <tr><th>CONTRACT</th><th>VALUE</th><th className={s.right}>DETAIL</th></tr>
               </thead>
               <tbody>
                 {active.contracts.map((c, i) => (
                   <tr key={i} className={c.secret ? s.secretRow : undefined}>
-                    <td className={s.kind} style={{ fontFamily: "var(--font-mono)" }}>
+                    <td className={s.kind}>
                       {c.kind}
                       {c.secret && <span className={s.tag}>private</span>}
                     </td>
                     <td className={s.headline}>{c.headline}</td>
-                    <td className={`${s.detail} ${s.right}`} style={{ fontFamily: "var(--font-mono)" }}>{c.detail}</td>
+                    <td className={`${s.detail} ${s.right}`}>{c.detail}</td>
                   </tr>
                 ))}
               </tbody>
@@ -93,13 +95,13 @@ export default function LensExplorer({ initial }: { initial: Lens[] }) {
           )}
 
           {active.id === "investor" && (
-            <p className={s.verdict}>
+            <p className={`prose ${s.verdict}`}>
               The <b>Mandate</b> is missing from this table, and that is the product. The investor
               holds units, receives the NAV and can prove every rebalance obeyed the strategy —
               without the ledger ever returning the strategy itself.
             </p>
           )}
-        </section>
+        </Panel>
       )}
 
       {stale && <p className={s.stale}>Lost contact with the ledger — showing the last answer it gave.</p>}

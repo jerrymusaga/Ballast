@@ -1,0 +1,31 @@
+.panel { border: 1px solid var(--line); background: var(--panel); }
+
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 28px;
+  padding: 0 10px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel-2);
+}
+
+.code {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: #0A0704;
+  background: var(--amber);
+  padding: 1px 6px;
+}
+
+.title {
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+
+.right { margin-left: auto; display: flex; align-items: center; gap: 12px; font-size: 10.5px; color: var(--ink-3); }
+
+.body { padding: 14px; }
+.bodyFlush { padding: 0; }
