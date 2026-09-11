@@ -10,7 +10,6 @@
 module Ballast.Fund where
 
 import DA.Time (RelTime)
-import Splice.Api.Token.HoldingV1
 
 import Ballast.Oracle
 import Ballast.Valuation

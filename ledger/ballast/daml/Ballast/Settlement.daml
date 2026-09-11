@@ -17,7 +17,6 @@ module Ballast.Settlement where
 import DA.Foldable (forA_)
 import DA.List (dedup)
 import Splice.Api.Token.AllocationV1
-import Splice.Api.Token.HoldingV1
 import Splice.Api.Token.MetadataV1
 
 import Ballast.Fund (Fund)
