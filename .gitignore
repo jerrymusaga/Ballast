@@ -8,3 +8,8 @@ node_modules/
 # committed so the ledger package builds anywhere (and on Seaport's build runner).
 !ledger/dars/*.dar
 .vscode/
+
+# Secrets. Never commit.
+.env
+*.env
+!*.env.example

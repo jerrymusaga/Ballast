@@ -4,8 +4,13 @@
   "private": true,
   "type": "module",
   "description": "Off-ledger drift watcher for Ballast. Proposes; never decides.",
-  "engines": { "node": ">=22.6" },
+  "engines": {
+    "node": ">=22.6"
+  },
   "scripts": {
-    "test": "node --test --experimental-strip-types test/*.test.ts"
+    "test": "node --test --experimental-strip-types test/*.test.ts",
+    "provision:plan": "node --env-file=.env --experimental-strip-types src/provision.ts --plan",
+    "provision:apply": "node --env-file=.env --experimental-strip-types src/provision.ts --apply",
+    "provision:formation-done": "node --env-file=.env --experimental-strip-types src/provision.ts --apply --formation-done"
   }
 }
