@@ -4,15 +4,32 @@
 // on the previous project, so each is commented where it bites rather than in a wiki nobody
 // reads.
 
+/**
+ * How to obtain a token.
+ *
+ * Two flows, because two kinds of ledger need two different things:
+ *
+ *  - `client_credentials` — a machine identity with its own secret. What a validator you
+ *    operate yourself typically issues.
+ *  - `password` / `refresh_token` — a HUMAN identity: you authenticate as yourself and the
+ *    ledger acts on your behalf. This is what a shared node handed out to many participants
+ *    uses, because there is no per-app secret to issue — each person already has an account.
+ *    Exchange the password once for a refresh token, keep only that, and never store the
+ *    password.
+ */
+export type Credentials =
+  | { grant: "client_credentials"; clientId: string; clientSecret: string }
+  | { grant: "password"; clientId: string; username: string; password: string }
+  | { grant: "refresh_token"; clientId: string; refreshToken: string };
+
 export interface Conn {
   baseUrl: string;
   /** OIDC settings. Absent for an unauthenticated ledger, such as a local sandbox. */
   auth?: {
     tokenUrl: string;
-    clientId: string;
-    clientSecret: string;
     scope: string;
-    audience: string;
+    audience?: string;
+    credentials: Credentials;
   };
   /** The ledger user the token authenticates as. Commands MUST be submitted as this user. */
   userId: string;
@@ -25,26 +42,53 @@ export function connFromEnv(env: Record<string, string | undefined> = process.en
     return v;
   };
   const baseUrl = need("LEDGER_API_URL").replace(/\/$/, "");
+  const scope = env.OIDC_SCOPE ?? "daml_ledger_api";
 
   // A local sandbox runs without auth. Treating that as a first-class case rather than a
   // special one means the deploy path can be exercised in full — upload, parties, rights,
-  // submission, disclosure — without needing credentials to a hosted validator.
-  if (!env.OIDC_CLIENT_SECRET) {
+  // submission, disclosure — without credentials to any hosted validator.
+  const hasSecret = Boolean(env.OIDC_CLIENT_SECRET);
+  const hasRefresh = Boolean(env.OIDC_REFRESH_TOKEN);
+  const hasPassword = Boolean(env.OIDC_USERNAME && env.OIDC_PASSWORD);
+  if (!hasSecret && !hasRefresh && !hasPassword) {
     return { baseUrl, userId: env.LEDGER_USER_ID ?? "participant_admin" };
   }
 
+  const clientId = need("OIDC_CLIENT_ID");
+  const credentials: Credentials = hasRefresh
+    ? { grant: "refresh_token", clientId, refreshToken: need("OIDC_REFRESH_TOKEN") }
+    : hasSecret
+      ? { grant: "client_credentials", clientId, clientSecret: need("OIDC_CLIENT_SECRET") }
+      : { grant: "password", clientId, username: need("OIDC_USERNAME"), password: need("OIDC_PASSWORD") };
+
   return {
     baseUrl,
-    auth: {
-      tokenUrl: need("OIDC_TOKEN_URL"),
-      clientId: need("OIDC_CLIENT_ID"),
-      clientSecret: need("OIDC_CLIENT_SECRET"),
-      scope: env.OIDC_SCOPE ?? "daml_ledger_api",
-      audience: env.OIDC_AUDIENCE ?? need("OIDC_CLIENT_ID"),
-    },
-    userId: env.LEDGER_USER_ID ?? "6",
+    auth: { tokenUrl: need("OIDC_TOKEN_URL"), scope, audience: env.OIDC_AUDIENCE, credentials },
+    // On a shared node the ledger user IS the authenticated subject, so it comes from the
+    // token's `sub` claim rather than being configured. Left unset, it is filled in on first
+    // authentication.
+    userId: env.LEDGER_USER_ID ?? "",
   };
 }
+
+/** Read a JWT's claims without verifying it — we only want `sub`, which the issuer set. */
+function claims(jwt: string): Record<string, unknown> {
+  try {
+    const part = jwt.split(".")[1] ?? "";
+    const padded = part.padEnd(part.length + ((4 - (part.length % 4)) % 4), "=");
+    return JSON.parse(Buffer.from(padded, "base64url").toString("utf8"));
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * The refresh token obtained by a password exchange.
+ *
+ * Kept so a password need never be stored: exchange it once, keep this, and every later run
+ * authenticates without it.
+ */
+export let lastRefreshToken = "";
 
 let cached: { token: string; expiresAt: number } | null = null;
 
@@ -52,12 +96,16 @@ let cached: { token: string; expiresAt: number } | null = null;
 export async function bearer(c: Conn): Promise<string> {
   if (!c.auth) return "";
   if (cached && Date.now() < cached.expiresAt) return cached.token;
+
+  const cr = c.auth.credentials;
   const body = new URLSearchParams({
-    grant_type: "client_credentials",
-    client_id: c.auth.clientId,
-    client_secret: c.auth.clientSecret,
+    grant_type: cr.grant,
+    client_id: cr.clientId,
     scope: c.auth.scope,
-    audience: c.auth.audience,
+    ...(c.auth.audience ? { audience: c.auth.audience } : {}),
+    ...(cr.grant === "client_credentials" ? { client_secret: cr.clientSecret } : {}),
+    ...(cr.grant === "password" ? { username: cr.username, password: cr.password } : {}),
+    ...(cr.grant === "refresh_token" ? { refresh_token: cr.refreshToken } : {}),
   });
   const res = await fetch(c.auth.tokenUrl, {
     method: "POST",
@@ -66,7 +114,20 @@ export async function bearer(c: Conn): Promise<string> {
   });
   const text = await res.text();
   if (!res.ok) throw new Error(`token request failed ${res.status}: ${text.slice(0, 300)}`);
-  const json = JSON.parse(text) as { access_token: string; expires_in?: number };
+  const json = JSON.parse(text) as {
+    access_token: string;
+    expires_in?: number;
+    refresh_token?: string;
+  };
+  if (json.refresh_token) lastRefreshToken = json.refresh_token;
+
+  // On a shared node the ledger user is whoever authenticated, so take it from the token
+  // rather than making the operator paste a subject id they would have to look up.
+  if (!c.userId) {
+    const sub = claims(json.access_token).sub;
+    if (typeof sub === "string" && sub) c.userId = sub;
+  }
+
   // Refresh a minute early rather than discovering expiry mid-submission.
   const ttl = (json.expires_in ?? 3600) * 1000 - 60_000;
   cached = { token: json.access_token, expiresAt: Date.now() + ttl };
