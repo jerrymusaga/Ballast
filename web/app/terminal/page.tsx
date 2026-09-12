@@ -1,6 +1,5 @@
 import Link from "next/link";
 import DisclosureMatrix from "@/components/DisclosureMatrix";
-import LensExplorer from "@/components/LensExplorer";
 import Panel from "@/components/Panel";
 import RebalanceConsole from "@/components/RebalanceConsole";
 import StatusStrip from "@/components/StatusStrip";
@@ -50,7 +49,6 @@ export default async function Terminal() {
   }
 
   const status = statusFrom(lenses);
-  const investor = lenses.find((l) => l.id === "investor");
 
   return (
     <main className={s.main}>
@@ -58,10 +56,8 @@ export default async function Terminal() {
         <div className={s.intro}>
           <h1 className={s.h1}>Try to cheat this fund. You can&rsquo;t.</h1>
           <p className={`prose ${s.introP}`}>
-            This is a real index fund on a Canton ledger — not a mock-up. You are holding the
-            manager&rsquo;s keys. Below you can propose trades on its behalf, including dishonest
-            ones, and watch the ledger decide. Then look at what everyone else was able to see
-            while it happened.
+            You are holding the manager&rsquo;s keys to a real fund on a Canton ledger. Propose a
+            trade — including a dishonest one — and watch the ledger decide.
           </p>
         </div>
 
@@ -81,48 +77,19 @@ export default async function Terminal() {
           <div className={s.verdict}>
             <span className={s.verdictK}>THE POINT</span>
             <p className="prose">
-              Look at the first row. <b>The strategy is visible to the two parties that run the
-              fund and to nobody else</b> — not even to the investors whose money it is. Yet
-              those investors still see what the fund is worth, what they own, and the rules it
-              promised to stay inside.
-              {investor && ` This investor gets ${investor.count} of the ${
-                lenses.find((l) => l.id === "manager")?.count ?? 0
-              } things that exist.`}{" "}
-              That is the product: you can check the fund without being able to copy it.
+              The strategy is visible to the two parties that run the fund and to nobody else —
+              not even the investors whose money it is. They still see what the fund is worth,
+              what they own, and the rules it promised to keep.
             </p>
           </div>
         </Panel>
 
-        <Panel code="03" title="Inspect — look through one party's eyes" flush>
-          <p className={`prose ${s.explain}`}>
-            Pick someone. You are seeing exactly what the ledger hands them when they ask — no
-            more, and nothing withheld by us.
-          </p>
-          <LensExplorer initial={lenses} />
-        </Panel>
+        <p className={`prose ${s.onward}`}>
+          Want to look through one party&rsquo;s eyes in detail, or check any of this against the
+          repository? <Link href="/invest" className={s.link}>Join the fund as an investor</Link>{" "}
+          or <Link href="/verify" className={s.link}>run the checks yourself</Link>.
+        </p>
 
-        <Panel code="04" title="Verify — don\u2019t take our word for it" flush>
-          <div className={s.checks}>
-            <div className={s.check}>
-              <span className={s.checkK}>PACKAGE</span>
-              <p className="prose">The deployed package contains no token template, so it cannot be minting its own pretend assets.</p>
-              <code className={s.cmd}>unzip -l ledger/ballast/.daml/dist/ballast-*.dar | grep dalf</code>
-            </div>
-            <div className={s.check}>
-              <span className={s.checkK}>POLICY</span>
-              <p className="prose">The mandate refuses nine ways to deviate. Each test differs from a good rebalance in exactly one dimension.</p>
-              <code className={s.cmd}>cd ledger && daml build --all && cd ballast-test && daml test</code>
-            </div>
-            <div className={s.check}>
-              <span className={s.checkK}>KEEPER</span>
-              <p className="prose">Exact fixed-point arithmetic matching Daml&rsquo;s Decimal, so a rebalance is never rejected for an invisible rounding error.</p>
-              <code className={s.cmd}>cd keeper && npm test</code>
-            </div>
-          </div>
-          <div className={s.more}>
-            <Link href="/verify" className={s.moreLink}>▸ FULL VERIFICATION CHECKLIST</Link>
-          </div>
-        </Panel>
       </div>
     </main>
   );

@@ -1,29 +1,24 @@
 .scroll { overflow-x: auto; }
-.grid { min-width: 940px; }
+.grid { min-width: 720px; }
 
 .corner, .col { border-bottom: 1px solid var(--line-2); padding: 9px 12px; font-weight: 400; vertical-align: bottom; }
-.corner { text-align: left; font-size: 9.5px; letter-spacing: 0.14em; color: var(--ink-4); width: 300px; }
+.corner { text-align: left; font-size: 9.5px; letter-spacing: 0.14em; color: var(--ink-4); width: 250px; }
 
-.col { border-left: 1px solid var(--line); text-align: left; width: 15%; }
+.col { border-left: 1px solid var(--line); text-align: center; width: 15%; }
 .colName { display: block; font-size: 11px; letter-spacing: 0.12em; color: var(--ink-2); }
 .colRole { display: block; font-size: 9.5px; color: var(--ink-4); margin-top: 2px; }
 .colFocus { background: var(--amber-wash); }
 .colFocus .colName { color: var(--amber); }
 
 .rowHead {
-  text-align: left; font-weight: 400; vertical-align: top;
-  padding: 11px 12px; border-bottom: 1px solid var(--line);
+  text-align: left; font-weight: 400;
+  padding: 8px 12px; border-bottom: 1px solid var(--line);
 }
 .plain { display: block; font-size: 13px; color: var(--ink); }
-.what {
-  display: block; margin-top: 3px; max-width: 38ch;
-  font-family: var(--font-sans), system-ui, sans-serif;
-  font-size: 11.5px; line-height: 1.45; color: var(--ink-3);
-}
-.tech { display: block; margin-top: 5px; font-size: 9.5px; color: var(--ink-4); letter-spacing: 0.06em; }
+.tech { display: block; margin-top: 1px; font-size: 9px; color: var(--ink-4); letter-spacing: 0.06em; }
 
 .cell {
-  vertical-align: top; padding: 11px 12px;
+  text-align: center; padding: 8px 12px;
   border-left: 1px solid var(--line); border-bottom: 1px solid var(--line);
 }
 .cellFocus { background: var(--amber-wash); }
@@ -32,8 +27,6 @@
 .dotSecret { color: var(--amber); font-size: 10px; }
 .blank { color: var(--ink-4); font-size: 10px; }
 
-.value { display: block; margin-top: 4px; font-size: 11.5px; color: var(--ink-2); }
-.valueNone { display: block; margin-top: 4px; font-size: 10.5px; color: var(--ink-4); font-style: normal; }
 
 .secretRow .plain { color: var(--amber); }
 .priv {

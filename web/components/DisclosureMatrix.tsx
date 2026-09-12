@@ -32,7 +32,7 @@ export default function DisclosureMatrix({ lenses }: { lenses: Lens[] }) {
       <table className={s.grid}>
         <thead>
           <tr>
-            <th className={s.corner}>WHAT EXISTS ON THE LEDGER</th>
+            <th className={s.corner}>WHAT EXISTS</th>
             {lenses.map((l) => (
               <th key={l.id} className={l.id === "investor" ? `${s.col} ${s.colFocus}` : s.col}>
                 <span className={s.colName}>{l.label.toUpperCase()}</span>
@@ -44,12 +44,11 @@ export default function DisclosureMatrix({ lenses }: { lenses: Lens[] }) {
         <tbody>
           {ordered.map(([kind, row]) => (
             <tr key={kind} className={row.secret ? s.secretRow : undefined}>
-              <th className={s.rowHead}>
+              <th className={s.rowHead} title={row.what}>
                 <span className={s.plain}>
                   {row.plain}
                   {row.secret && <span className={s.priv}>PRIVATE</span>}
                 </span>
-                <span className={s.what}>{row.what}</span>
                 <span className={s.tech}>{kind}</span>
               </th>
               {lenses.map((l) => {
@@ -57,24 +56,16 @@ export default function DisclosureMatrix({ lenses }: { lenses: Lens[] }) {
                 const focus = l.id === "investor";
                 return (
                   <td key={l.id} className={focus ? `${s.cell} ${s.cellFocus}` : s.cell}>
-                    {hits.length > 0 ? (
-                      <>
-                        <span className={row.secret ? s.dotSecret : s.dot}>●</span>
-                        <span className={s.value}>{hits.map((h) => h.headline).join(" · ")}</span>
-                      </>
-                    ) : (
-                      <>
-                        <span className={s.blank}>·</span>
-                        <span className={s.valueNone}>not returned</span>
-                      </>
-                    )}
+                    {hits.length > 0
+                      ? <span className={row.secret ? s.dotSecret : s.dot}>●</span>
+                      : <span className={s.blank}>·</span>}
                   </td>
                 );
               })}
             </tr>
           ))}
           <tr className={s.totals}>
-            <th className={s.rowHead}><span className={s.plain}>Total each party can see</span></th>
+            <th className={s.rowHead}><span className={s.plain}>TOTAL VISIBLE</span></th>
             {lenses.map((l) => (
               <td key={l.id} className={l.id === "investor" ? `${s.cell} ${s.cellFocus}` : s.cell}>
                 <span className={l.count === 0 ? s.zero : s.total}>{l.party ? l.count : "—"}</span>

@@ -8,13 +8,6 @@
 .errText + .trace { margin-top: 12px; }
 .trace { margin: 12px 0; padding: 10px 12px; background: var(--bg); border: 1px solid var(--line); font-size: 11px; color: var(--red); overflow-x: auto; }
 
-.checks { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1px; background: var(--line); }
-.check { background: var(--panel); padding: 14px; display: flex; flex-direction: column; gap: 9px; }
-.checkK { font-size: 10px; letter-spacing: 0.14em; color: var(--cyan); }
-.cmd { display: block; margin-top: auto; padding: 8px 10px; background: var(--bg); border: 1px solid var(--line); font-size: 11px; color: var(--ink-2); overflow-x: auto; white-space: nowrap; }
-
-.more { padding: 11px 14px; border-top: 1px solid var(--line); }
-.moreLink { font-size: 10.5px; letter-spacing: 0.14em; color: var(--amber); }
 .moreLink:hover { text-decoration: underline; text-underline-offset: 3px; }
 
 .intro { padding: 22px 2px 6px; }
@@ -28,4 +21,6 @@
 .verdictK { font-size: 10px; letter-spacing: 0.15em; color: var(--amber); padding-top: 2px; }
 .verdict p { max-width: 92ch; font-size: 14px; }
 
-.explain { padding: 12px 14px; border-bottom: 1px solid var(--line); max-width: 84ch; }
+.onward { padding: 12px 2px; max-width: 86ch; }
+.link { color: var(--amber); }
+.link:hover { text-decoration: underline; text-underline-offset: 3px; }

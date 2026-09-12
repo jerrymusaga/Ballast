@@ -220,19 +220,32 @@ export async function proposeRebalance(mode: RebalanceMode): Promise<ActionResul
       ok: true,
       title: mode === "honest" ? "Accepted — and proved" : "Accepted",
       detail:
-        "The ledger checked the proposal against the private strategy and committed it. A compliance record now exists that investors can see, naming the strategy version it satisfied and nothing else about it.",
+        "Checked against the private strategy and committed. Investors can now see a proof naming the strategy version it satisfied — and nothing else about it.",
     };
   } catch (e) {
     const raw = e instanceof Error ? e.message : String(e);
-    // Surface the mandate's own words, not Canton's error scaffolding around them.
-    const cause =
-      /AssertionFailed[^:]*:\s*(.+?)(?:"|\\n|$)/.exec(raw)?.[1]?.trim() ?? null;
+    // The mandate's own sentence, with Canton's scaffolding stripped off the front.
+    // Raw looks like: UNHANDLED_EXCEPTION/DA.Exception.AssertionFailed:AssertionFailed
+    // (error category 9): rebalance is not self-financing
+    const cause = ledgerSentence(raw);
     return {
       ok: false,
       title: "Refused by the ledger",
       detail:
-        "The transaction did not commit, so nothing moved. This was not blocked by the app — the mandate is a contract, and the ledger would not record a trade that breaks it.",
+        "Nothing moved. This was not the app declining — the mandate is a contract, and the ledger would not record a trade that breaks it.",
       ledgerError: cause ?? raw.slice(0, 240),
     };
   }
+}
+
+/** Pull the human sentence out of a Canton error, or give back something short and honest. */
+function ledgerSentence(raw: string): string {
+  const m = /AssertionFailed[^:]*:\s*([^"\\]+)/.exec(raw);
+  const text = (m?.[1] ?? raw).trim();
+  return text
+    .replace(/^.*?AssertionFailed[^:]*:\s*/, "")
+    .replace(/\s*\(error category \d+\)\s*:?\s*/gi, "")
+    .replace(/^[A-Z_]+\/[^:]+:\s*/, "")
+    .trim()
+    .slice(0, 200);
 }

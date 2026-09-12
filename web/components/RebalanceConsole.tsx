@@ -29,24 +29,9 @@ interface Result {
 }
 
 const MOVES = [
-  {
-    mode: "honest",
-    label: "Do what the rules require",
-    hint: "Propose exactly the trade the strategy calls for.",
-    tone: "good" as const,
-  },
-  {
-    mode: "skim",
-    label: "Try to keep some of the proceeds",
-    hint: "Sell as required, buy back a tenth less, pocket the difference.",
-    tone: "bad" as const,
-  },
-  {
-    mode: "timid",
-    label: "Try trading too little",
-    hint: "Move the right way, but nowhere near far enough.",
-    tone: "bad" as const,
-  },
+  { mode: "honest", label: "Obey the rules", hint: "Trade exactly what the strategy requires.", tone: "good" as const },
+  { mode: "skim", label: "Skim the proceeds", hint: "Sell as required; buy back a tenth less.", tone: "bad" as const },
+  { mode: "timid", label: "Under-trade", hint: "A fifth of what is required.", tone: "bad" as const },
 ];
 
 export default function RebalanceConsole({ initial }: { initial: FundState | null }) {
@@ -122,11 +107,10 @@ export default function RebalanceConsole({ initial }: { initial: FundState | nul
       <div className={fund.breached ? `${s.drift} ${s.driftOn}` : s.drift}>
         <span className={s.label}>{fund.breached ? "A REBALANCE IS DUE" : "NO REBALANCE DUE"}</span>
         <p className="prose">
-          The fund has drifted <b>{fund.driftPct}</b> from its target, against a limit of{" "}
-          <b>{fund.bandPct}</b>.{" "}
+          Drifted <b>{fund.driftPct}</b> against a <b>{fund.bandPct}</b> limit.{" "}
           {fund.breached
-            ? "The strategy says it must trade — and the strategy itself stays private throughout."
-            : "Nothing may trade until it drifts past the limit. A fund that trades on a schedule is a fund you can predict."}
+            ? "It must trade — without ever revealing what it is trading towards."
+            : "Nothing may trade until it drifts past the limit."}
         </p>
         {fund.breached && fund.legs.length > 0 && (
           <div className={s.legs}>
@@ -143,7 +127,7 @@ export default function RebalanceConsole({ initial }: { initial: FundState | nul
 
       {/* act */}
       <div className={s.moves}>
-        <span className={s.label}>NOW TRY TO GET SOMETHING PAST THE LEDGER</span>
+        <span className={s.label}>PROPOSE A TRADE</span>
         <div className={s.buttons}>
           {MOVES.map((m) => (
             <button
@@ -177,8 +161,8 @@ export default function RebalanceConsole({ initial }: { initial: FundState | nul
 
       <p className={`prose ${s.foot}`}>
         {fund.proofs > 0
-          ? `${fund.proofs} compliance record${fund.proofs === 1 ? "" : "s"} now exist on this ledger. Investors can see them; none of them contains a target weight.`
-          : "No rebalance has been accepted yet."}
+          ? `${fund.proofs} proof${fund.proofs === 1 ? "" : "s"} on this ledger — visible to investors, and none contains a weight.`
+          : "No rebalance accepted yet."}
       </p>
     </div>
   );
