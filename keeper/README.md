@@ -54,7 +54,7 @@ been dropped, failing loudly if it has not.
 
 The whole deploy path runs against a real participant node without a hosted validator:
 
-    cd ledger && daml sandbox --json-api-port 7575 --dar ballast/.daml/dist/ballast-0.1.0.dar
+    cd ledger && daml sandbox --json-api-port 7575 --dar ballast/.daml/dist/ballast-*.dar
     cd keeper && LEDGER_API_URL=http://localhost:7575 npm run provision:apply
 
 With no `OIDC_CLIENT_SECRET` set, the client runs unauthenticated, which is how a sandbox

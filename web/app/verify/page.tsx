@@ -11,7 +11,7 @@ const STEPS = [
   {
     t: "THE ASSETS ARE REAL, AND THE PACKAGE PROVES IT",
     d: "Ballast builds against the Canton Token Standard interfaces, and the deployed package contains no token implementation — so it cannot be minting its own pretend assets. The only token template in the repository lives in the test package and never ships.",
-    code: "unzip -l ledger/ballast/.daml/dist/ballast-0.1.0.dar | grep dalf",
+    code: "unzip -l ledger/ballast/.daml/dist/ballast-*.dar | grep dalf",
   },
   {
     t: "THE MANDATE REFUSES",

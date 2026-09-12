@@ -71,7 +71,7 @@ export default async function Terminal() {
             <div className={s.check}>
               <span className={s.checkK}>PACKAGE</span>
               <p className="prose">The deployed package contains no token template, so it cannot be minting its own pretend assets.</p>
-              <code className={s.cmd}>unzip -l ledger/ballast/.daml/dist/ballast-0.2.0.dar | grep dalf</code>
+              <code className={s.cmd}>unzip -l ledger/ballast/.daml/dist/ballast-*.dar | grep dalf</code>
             </div>
             <div className={s.check}>
               <span className={s.checkK}>POLICY</span>

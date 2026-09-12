@@ -4,7 +4,7 @@ Next.js 16 · React 19 · TypeScript · CSS Modules. No UI framework and no Tail
 is bespoke, and framework defaults have a way of showing through.
 
     # a ledger must be running; a local sandbox is enough
-    cd ledger && daml sandbox --json-api-port 7575 --dar ballast/.daml/dist/ballast-0.1.0.dar
+    cd ledger && daml sandbox --json-api-port 7575 --dar ballast/.daml/dist/ballast-*.dar
     cd keeper && LEDGER_API_URL=http://localhost:7575 npm run provision:apply   # then formation
 
     cd web && npm install
