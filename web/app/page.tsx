@@ -37,7 +37,7 @@ export default function Home() {
               <span className={s.launchIcon}>▸</span>
               LAUNCH TERMINAL
             </Link>
-            <Link href="/verify" className={s.secondary}>VERIFY THE CLAIMS</Link>
+            <Link href="/invest" className={s.secondary}>JOIN AS AN INVESTOR</Link>
           </div>
           <p className={s.hint}>Live disclosure matrix, read from a running Canton participant.</p>
         </div>

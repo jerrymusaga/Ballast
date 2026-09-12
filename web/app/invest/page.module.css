@@ -1,0 +1,8 @@
+.main { padding: 18px 0 44px; }
+.main > .wrap > * + * { margin-top: 12px; }
+.intro { padding: 20px 2px 4px; }
+.h1 { font-size: clamp(19px, 2.6vw, 26px); color: var(--ink); letter-spacing: 0.01em; }
+.p { margin-top: 10px; max-width: 84ch; font-size: 14px; }
+.foot { padding: 4px 2px; max-width: 88ch; }
+.link { color: var(--amber); }
+.link:hover { text-decoration: underline; text-underline-offset: 3px; }

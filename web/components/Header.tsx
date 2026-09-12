@@ -7,8 +7,9 @@ import s from "./Header.module.css";
 
 const NAV = [
   { key: "F1", href: "/", label: "OVERVIEW" },
-  { key: "F2", href: "/terminal", label: "TERMINAL" },
-  { key: "F3", href: "/verify", label: "VERIFY" },
+  { key: "F2", href: "/terminal", label: "MANAGER" },
+  { key: "F3", href: "/invest", label: "INVESTOR" },
+  { key: "F4", href: "/verify", label: "VERIFY" },
 ];
 
 export default function Header() {
