@@ -20,6 +20,7 @@
 //   npm run provision:apply    # do it
 
 import { readFile } from "node:fs/promises";
+import { darLocation } from "./commands.ts";
 import {
   type Conn, type Right,
   connFromEnv, grantRights, listPackages, listParties, listRights, revokeRights,
@@ -40,7 +41,7 @@ const ROLES = [
   { hint: "ballast-market", right: "readAs" as const, why: "outsider — must see nothing" },
 ];
 
-const DAR = "../../ledger/ballast/.daml/dist/ballast-0.1.0.dar";
+const PKG_DIR = "../../ledger/ballast/";
 
 async function main() {
   const args = new Set(process.argv.slice(2));
@@ -63,8 +64,10 @@ async function main() {
   console.log(`\nparties already on this validator: ${existing.length}`);
 
   // ── packages ──
-  const dar = await readFile(new URL(DAR, import.meta.url));
-  console.log(`\nDAR:     ${DAR} (${(dar.length / 1024).toFixed(0)} KiB)`);
+  const damlYaml = await readFile(new URL(`${PKG_DIR}daml.yaml`, import.meta.url), "utf8");
+  const loc = darLocation(damlYaml);
+  const dar = await readFile(new URL(`${PKG_DIR}${loc.file}`, import.meta.url));
+  console.log(`\nDAR:     ${loc.name} v${loc.version} (${(dar.length / 1024).toFixed(0)} KiB)`);
   if (apply) {
     const before = (await listPackages(c)).length;
     await uploadDar(c, dar);

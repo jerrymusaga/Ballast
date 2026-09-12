@@ -1,5 +1,0 @@
-.main { padding: 18px 0 40px; }
-.main > .wrap > * + * { margin-top: 14px; }
-.note { padding: 12px 14px; border-top: 1px solid var(--line); max-width: 100ch; }
-.err { max-width: 70ch; }
-.trace { margin: 12px 0 0; padding: 10px 12px; background: var(--bg); border: 1px solid var(--line); font-size: 11px; color: var(--red); overflow-x: auto; }

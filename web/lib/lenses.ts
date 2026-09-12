@@ -85,3 +85,54 @@ export async function readLenses(): Promise<{ ledger: string; version: string | 
   }
   return { ledger: c.baseUrl, version, lenses };
 }
+
+export interface FundStatus {
+  fundId: string | null;
+  mandateVersion: string | null;
+  unitsInIssue: string | null;
+  holdings: number | null;
+  reserved: number | null;
+  nav: string | null;
+  navAsOf: string | null;
+  pricedInstruments: number | null;
+  investors: number | null;
+  universe: number | null;
+  driftBand: string | null;
+  maxWeight: string | null;
+}
+
+/**
+ * The fund's own numbers, read from the operator's lens.
+ *
+ * Deliberately assembled from the SAME per-party query the matrix uses rather than from a
+ * privileged side channel — so if a figure appears here, a party could see it, and the status
+ * strip cannot quietly know more than the lens it came from.
+ */
+export function statusFrom(lenses: Lens[]): FundStatus {
+  const operator = lenses.find((l) => l.id === "manager");
+  const pick = (kind: string) => operator?.contracts.find((c) => c.kind === kind) ?? null;
+  const digits = (v: string | undefined) => (v ? (v.match(/[\d.]+/)?.[0] ?? null) : null);
+
+  const fund = pick("Fund");
+  const mandate = pick("Mandate");
+  const units = pick("UnitLedger");
+  const index = pick("VaultIndex");
+  const nav = pick("NavRecord");
+  const prices = pick("PriceSet");
+  const bounds = pick("MandateBounds");
+
+  return {
+    fundId: fund?.headline ?? null,
+    mandateVersion: mandate ? digits(mandate.headline) : null,
+    unitsInIssue: units ? digits(units.headline) : null,
+    holdings: index ? Number(digits(index.headline) ?? 0) : null,
+    reserved: index ? Number(digits(index.detail) ?? 0) : null,
+    nav: nav?.headline ?? null,
+    navAsOf: nav?.detail ?? null,
+    pricedInstruments: prices ? Number(digits(prices.headline) ?? 0) : null,
+    investors: fund ? Number(digits(fund.detail) ?? 0) : null,
+    universe: bounds ? Number(bounds.detail.match(/(\d+)\s+instruments/)?.[1] ?? 0) : null,
+    driftBand: bounds?.detail.match(/band\s+([\d.]+)/)?.[1] ?? null,
+    maxWeight: bounds?.detail.match(/cap\s+([\d.]+)/)?.[1] ?? null,
+  };
+}

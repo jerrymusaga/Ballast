@@ -1,16 +1,14 @@
 import Link from "next/link";
-import DisclosureMatrix from "@/components/DisclosureMatrix";
-import Panel from "@/components/Panel";
-import { readLenses, type Lens } from "@/lib/lenses";
 import s from "./page.module.css";
 
-export const dynamic = "force-dynamic";
+// Deliberately static. The front door should open instantly and never depend on a ledger
+// being up — live state is the terminal's job, and a landing page that hangs because a
+// participant node is down is a landing page that fails at the worst moment.
 
-const BINDS = [
-  ["REAL ASSETS", "The vault holds genuine CIP-56 registry instruments. Ballast defines no asset of its own — the deployed package contains no token template at all."],
-  ["LEDGER DECIDES", "Nine ways to deviate are refused: trading before the band breaks, under-trading, trades that are not self-financing, prices away from the oracle, breaching the cadence floor."],
-  ["PROOF, NOT TRUST", "Each rebalance emits a record citing the mandate version it satisfied — and no weight, instrument or counterparty. The manager cannot forge one alone."],
-  ["ATOMIC OR NOTHING", "Validation and settlement are one transaction. If the mandate refuses, the assets do not move. Not a warning. No state change at all."],
+const PROOF = [
+  ["REAL REGISTRY ASSETS", "The vault holds genuine CIP-56 instruments. Ballast defines no asset of its own — the deployed package contains no token template at all."],
+  ["THE LEDGER DECIDES", "Nine ways to deviate are refused outright. If the mandate says no, the transaction does not commit and the assets do not move."],
+  ["PROOF WITHOUT DISCLOSURE", "Each rebalance emits a record citing the mandate version it satisfied — and no weight, no instrument, no counterparty."],
 ];
 
 const LIMITS = [
@@ -20,64 +18,44 @@ const LIMITS = [
   ["ORACLE", "Trusted, and not claimed otherwise. The narrower claim: the manager cannot mark its own book, pick the price set, or pick the moment."],
 ];
 
-export default async function Home() {
-  let lenses: Lens[] = [];
-  let ledger = "";
-  let offline = false;
-  try {
-    const d = await readLenses();
-    lenses = d.lenses;
-    ledger = d.ledger;
-  } catch {
-    offline = true;
-  }
-
-  const investor = lenses.find((l) => l.id === "investor");
-
+export default function Home() {
   return (
-    <main className={s.main}>
-      <div className="wrap">
-
-        {/* ── headline ─────────────────────────────────── */}
-        <div className={s.masthead}>
-          <div className={s.mastLeft}>
-            <h1 className={s.h1}>THE REBALANCE THE MARKET CAN&rsquo;T SEE</h1>
-            <p className={`prose ${s.lede}`}>
-              Every index fund publishes its rules so investors can trust it. That publication is
-              what lets traders predict the trade and get there first — and the fund&rsquo;s own
-              investors pay for it, on every rebalance, forever.
-            </p>
-            <div className={s.cta}>
-              <Link href="/lenses" className={s.btn}>▸ OPEN LENSES</Link>
-              <Link href="/verify" className={s.btnGhost}>VERIFY</Link>
-            </div>
+    <main>
+      <section className={s.hero}>
+        <div className="wrap">
+          <p className={s.eyebrow}>PRIVATE INDEX FUND · CANTON NETWORK</p>
+          <h1 className={s.h1}>
+            The rebalance the market<br />can&rsquo;t see coming.
+          </h1>
+          <p className={`prose ${s.lede}`}>
+            Every index fund publishes its rules so investors can trust it. That publication is
+            exactly what lets traders predict the trade and get there first — and the fund&rsquo;s
+            own investors pay for it, on every rebalance, forever.
+          </p>
+          <div className={s.cta}>
+            <Link href="/terminal" className={s.launch}>
+              <span className={s.launchIcon}>▸</span>
+              LAUNCH TERMINAL
+            </Link>
+            <Link href="/verify" className={s.secondary}>VERIFY THE CLAIMS</Link>
           </div>
-          <dl className={s.readout}>
-            {[
-              ["MANDATE", "PRIVATE", "amber"],
-              ["ASSETS", "CIP-56", "cyan"],
-              ["POLICY", "ON-LEDGER", "cyan"],
-              ["DEVIATIONS", "REFUSED", "green"],
-            ].map(([k, v, tone]) => (
-              <div key={k} className={s.readRow}>
-                <dt>{k}</dt>
-                <dd className={s[tone as "amber" | "cyan" | "green"]}>{v}</dd>
-              </div>
-            ))}
-          </dl>
+          <p className={s.hint}>Live disclosure matrix, read from a running Canton participant.</p>
         </div>
+      </section>
 
-        {/* ── the trap ─────────────────────────────────── */}
-        <Panel code="01" title="The trap every index fund is in">
+      <section className={s.trapSec}>
+        <div className="wrap">
           <div className={s.trap}>
-            <div>
-              <h3 className={s.trapH}>PUBLISH THE RULES</h3>
+            <div className={s.trapSide}>
+              <span className={s.trapTag}>OPTION A</span>
+              <h2>Publish the rules</h2>
               <p className="prose">Investors can check you followed the strategy. So can everyone
                  else — and public rules plus public prices make the next trade arithmetic.</p>
             </div>
-            <div className={s.trapMid}><span className={s.pill}>THE SAME ACT</span></div>
-            <div>
-              <h3 className={s.trapH}>HIDE THE PORTFOLIO</h3>
+            <div className={s.trapPivot}><span className={s.pill}>THE SAME ACT</span></div>
+            <div className={s.trapSide}>
+              <span className={s.trapTag}>OPTION B</span>
+              <h2>Hide the portfolio</h2>
               <p className="prose">Nobody front-runs you. But nobody can tell whether you followed
                  the strategy either, so investors are back to taking your word for it.</p>
             </div>
@@ -87,65 +65,67 @@ export default async function Home() {
             ledger reads and nobody else does — <b>the strategy stays private and still binds.</b>{" "}
             A rebalance that breaks it does not commit, so investors get proof without disclosure.
           </p>
-        </Panel>
-
-        {/* ── matrix ───────────────────────────────────── */}
-        <Panel
-          code="02"
-          title="Disclosure matrix"
-          right={<><span className={s.liveDot}>●</span> LIVE · {offline ? "NO LINK" : ledger.replace(/^https?:\/\//, "")}</>}
-          flush
-        >
-          {offline ? (
-            <p className={s.offline}>
-              No ledger connected. The matrix is read from a live participant node — there is
-              deliberately nothing to show without one.
-            </p>
-          ) : (
-            <>
-              <DisclosureMatrix lenses={lenses} />
-              <p className={`prose ${s.matrixNote}`}>
-                Each column is a separate active-contract-set query submitted as that party. The
-                <b> MANDATE</b> row is the argument: filled for the two parties that run the fund,
-                empty for the investors whose money it is — and empty because the ledger does not
-                return it, not because this page withholds it.
-                {investor && ` The investor sees ${investor.count} contracts and the strategy is not among them.`}
-              </p>
-            </>
-          )}
-        </Panel>
-
-        {/* ── binds / limits ───────────────────────────── */}
-        <div className={s.pair}>
-          <Panel code="03" title="Why it binds" flush>
-            <ul className={s.rows}>
-              {BINDS.map(([k, d]) => (
-                <li key={k} className={s.row}>
-                  <span className={s.rowKey}>{k}</span>
-                  <span className={`prose ${s.rowVal}`}>{d}</span>
-                </li>
-              ))}
-            </ul>
-          </Panel>
-
-          <Panel code="04" title="What it does not hide" flush>
-            <ul className={s.rows}>
-              {LIMITS.map(([k, d]) => (
-                <li key={k} className={s.row}>
-                  <span className={`${s.rowKey} ${s.rowKeyWarn}`}>{k}</span>
-                  <span className={`prose ${s.rowVal}`}>{d}</span>
-                </li>
-              ))}
-            </ul>
-          </Panel>
         </div>
+      </section>
 
-        <footer className={s.foot}>
+      <section className={s.sec}>
+        <div className="wrap">
+          <h2 className={s.h2}>Opacity is old. Opacity you don&rsquo;t have to trust is the product.</h2>
+          <p className={`prose ${s.sub}`}>
+            Semi-transparent ETFs have hidden portfolios for years. What they cannot do is prove
+            the strategy was followed without showing you the strategy.
+          </p>
+          <div className={s.proof}>
+            {PROOF.map(([k, d]) => (
+              <article key={k} className={s.proofCard}>
+                <span className={s.proofK}>{k}</span>
+                <p className="prose">{d}</p>
+              </article>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className={s.sec}>
+        <div className="wrap">
+          <h2 className={s.h2}>What it does not hide</h2>
+          <p className={`prose ${s.sub}`}>
+            A privacy claim is worth exactly what its threat model is worth. The guarantee is
+            against traders who would front-run the rebalance — not against everyone.
+          </p>
+          <ul className={s.limits}>
+            {LIMITS.map(([k, d], i) => (
+              <li key={k} className={s.limit}>
+                <span className={s.limitN}>{String(i + 1).padStart(2, "0")}</span>
+                <span className={s.limitK}>{k}</span>
+                <p className="prose">{d}</p>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </section>
+
+      <section className={s.closer}>
+        <div className="wrap">
+          <h2 className={s.closerH}>See it for yourself.</h2>
+          <p className={`prose ${s.closerP}`}>
+            Five parties, one ledger, five different answers. Nothing on the next screen is
+            filtered by us — every column is Canton answering a query for that party.
+          </p>
+          <Link href="/terminal" className={s.launch}>
+            <span className={s.launchIcon}>▸</span>
+            LAUNCH TERMINAL
+          </Link>
+        </div>
+      </section>
+
+      <footer className={s.foot}>
+        <div className={`wrap ${s.footRow}`}>
           <span>BALLAST · PRIVATE INDEX FUND ON CANTON</span>
           <a href="https://github.com/jerrymusaga/Ballast" target="_blank" rel="noreferrer">SOURCE ↗</a>
           <Link href="/verify">VERIFY</Link>
-        </footer>
-      </div>
+        </div>
+      </footer>
     </main>
   );
 }

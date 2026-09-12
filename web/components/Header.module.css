@@ -29,3 +29,7 @@
 
 @media (max-width: 900px) { .desc, .clock { display: none; } }
 @media (max-width: 680px) { .nav .key span:last-child { display: none; } .fund { display: none; } }
+
+/* Off the terminal the link state is context, not the headline — present, but receded. */
+.statQuiet { opacity: .55; }
+.statQuiet:hover { opacity: 1; }

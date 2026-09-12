@@ -1,0 +1,30 @@
+.boot { min-height: calc(100vh - 34px); display: flex; align-items: center; justify-content: center; padding: 40px 18px; }
+.inner { width: 100%; max-width: 560px; }
+
+.title { font-size: 11px; letter-spacing: 0.3em; color: var(--amber); margin-bottom: 22px; }
+
+.lines { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+
+.line {
+  display: grid;
+  grid-template-columns: 14px 1fr auto;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+  color: var(--ink-3);
+  opacity: 0;
+  animation: reveal .28s ease forwards;
+}
+.tick { color: var(--cyan); font-size: 9px; }
+.dots { height: 1px; background: repeating-linear-gradient(90deg, var(--line-2) 0 3px, transparent 3px 7px); min-width: 60px; }
+
+@keyframes reveal { from { opacity: 0; transform: translateX(-3px); } to { opacity: 1; transform: none; } }
+
+.foot { margin-top: 26px; font-size: 11px; color: var(--ink-4); letter-spacing: 0.1em; }
+.cursor { color: var(--amber); animation: blink 1.1s steps(2, start) infinite; }
+@keyframes blink { to { opacity: 0; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .line { opacity: 1; animation: none; }
+  .cursor { animation: none; }
+}

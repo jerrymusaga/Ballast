@@ -10,6 +10,18 @@ is bespoke, and framework defaults have a way of showing through.
     cd web && npm install
     LEDGER_API_URL=http://localhost:7575 npm run dev      # → http://localhost:5173
 
+## Structure
+
+    /            landing — static, opens instantly, no ledger dependency
+    /terminal    the product — live disclosure matrix, lens explorer, fund readout
+    /verify      the verification checklist
+
+The split is deliberate. A front door that hangs because a participant node is down is a front
+door that fails at the worst possible moment, so the landing page reads nothing. Everything
+live lives behind `/terminal`, which has a real `loading.tsx` — Next shows it for exactly as
+long as the per-party queries take, and it names the queries as they run, so a slow ledger
+tells you where it is instead of spinning.
+
 ## It never filters
 
 Each lens is a separate `/v2/state/active-contracts` query submitted as a different party, run

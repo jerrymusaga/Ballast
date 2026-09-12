@@ -171,7 +171,7 @@ not on the DevNet where real cBTC and cETH exist. Targeting v2 would mean holdin
 ```
 cd ledger && daml build --all && cd ballast-test && daml test   # 19 scripts
 cd keeper && npm test                                           # 10 tests, no deps
-cd web && npm install && npm run dev                            # dashboard on :5173
+cd web && npm install && npm run dev                            # → :5173, terminal at /terminal
 ```
 
 Proven so far, on **real CIP-56 `Holding` and `Allocation` interface contracts**, in 19 scripts:

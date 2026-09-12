@@ -152,3 +152,18 @@ export function packageIdFromDar(dar: Uint8Array, packageName: string): string {
   if (!m?.[1]) throw new Error(`could not find the package id for ${packageName} in the DAR`);
   return m[1];
 }
+
+/**
+ * Locate the built DAR by reading the package name and version out of its own daml.yaml.
+ *
+ * Hardcoding the filename is a bug with a delay on it. Canton refuses to vet two packages
+ * sharing a name and version with different content, so the version MUST change whenever the
+ * model does — and a path pinned to the old version then points at a file that either no
+ * longer exists or is the wrong build.
+ */
+export function darLocation(damlYaml: string): { name: string; version: string; file: string } {
+  const name = /^name:\s*(\S+)/m.exec(damlYaml)?.[1];
+  const version = /^version:\s*(\S+)/m.exec(damlYaml)?.[1];
+  if (!name || !version) throw new Error("could not read name and version from daml.yaml");
+  return { name, version, file: `.daml/dist/${name}-${version}.dar` };
+}

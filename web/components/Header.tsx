@@ -7,7 +7,7 @@ import s from "./Header.module.css";
 
 const NAV = [
   { key: "F1", href: "/", label: "OVERVIEW" },
-  { key: "F2", href: "/lenses", label: "LENSES" },
+  { key: "F2", href: "/terminal", label: "TERMINAL" },
   { key: "F3", href: "/verify", label: "VERIFY" },
 ];
 

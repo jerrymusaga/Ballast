@@ -10,9 +10,9 @@
 
 import { readFile } from "node:fs/promises";
 import { connFromEnv, listParties } from "./ledger.ts";
-import { create, int64, packageIdFromDar, relTime, templateId, timestamp, tuple2 } from "./commands.ts";
+import { create, darLocation, int64, packageIdFromDar, relTime, templateId, timestamp, tuple2 } from "./commands.ts";
 
-const DAR = "../../ledger/ballast/.daml/dist/ballast-0.1.0.dar";
+const PKG_DIR = "../../ledger/ballast/";
 
 /**
  * Package ids are derived from package CONTENT, so they change whenever the Daml does. Reading
@@ -21,7 +21,9 @@ const DAR = "../../ledger/ballast/.daml/dist/ballast-0.1.0.dar";
  */
 async function packageId(): Promise<string> {
   if (process.env.BALLAST_PKG) return process.env.BALLAST_PKG;
-  return packageIdFromDar(await readFile(new URL(DAR, import.meta.url)), "ballast");
+  const damlYaml = await readFile(new URL(`${PKG_DIR}daml.yaml`, import.meta.url), "utf8");
+  const loc = darLocation(damlYaml);
+  return packageIdFromDar(await readFile(new URL(`${PKG_DIR}${loc.file}`, import.meta.url)), loc.name);
 }
 
 const FUND_ID = process.env.BALLAST_FUND_ID ?? "BALLAST-01";
