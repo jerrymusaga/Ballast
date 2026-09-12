@@ -1,0 +1,126 @@
+-- Ballast — letting someone in.
+--
+-- A walk-up investor has to be admitted before they can subscribe, and admission touches two
+-- contracts: the Fund, which makes them an observer and lets them exercise RequestSubscription,
+-- and the MandateBounds, which is the only disclosure they get about how the fund is run.
+--
+-- Admitting to one but not the other is the failure worth testing. It leaves someone holding
+-- units with no visibility of the rules they are entitled to hold the fund to — strictly worse
+-- than not admitting them, because it looks like membership and is not.
+module Ballast.Test.Admit where
+
+import Daml.Script
+import DA.Assert ((===))
+import DA.Time (hours)
+import Splice.Api.Token.HoldingV1
+
+import Ballast.Fund
+import Ballast.Mandate
+
+data Rig = Rig
+  with
+    manager : Party
+    vault   : Party
+    alice   : Party
+    carol   : Party
+    oracle  : Party
+    cBTC    : InstrumentId
+    cETH    : InstrumentId
+    fund    : ContractId Fund
+    bounds  : ContractId MandateBounds
+
+rig : Script Rig
+rig = script do
+  manager <- allocateParty "Manager"
+  vault   <- allocateParty "BallastVault"
+  alice   <- allocateParty "Alice"
+  carol   <- allocateParty "Carol"     -- walks up later; not an investor at formation
+  oracle  <- allocateParty "PriceOracle"
+  btcReg  <- allocateParty "cBTC-Registry"
+  ethReg  <- allocateParty "cETH-Registry"
+
+  let cBTC = InstrumentId with admin = btcReg, id = "cBTC"
+      cETH = InstrumentId with admin = ethReg, id = "cETH"
+
+  fund <- submit (actAs [manager, vault]) do createCmd Fund with manager, vault, fundId = "BALLAST-01", oracle, maxPriceAge = hours 1, accepted = [cBTC], payout = cBTC, investors = [alice]
+  bounds <- submit (actAs [manager, vault]) do createCmd MandateBounds with manager, vault, fundId = "BALLAST-01", version = 1, universe = [cBTC, cETH], driftBand = 0.05, maxWeight = 0.8, minRebalanceGap = hours 1, investors = [alice]
+
+  pure Rig with manager, vault, alice, carol, oracle, cBTC, cETH, fund, bounds
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Before admission a stranger sees nothing, and cannot let themselves in.
+-- ─────────────────────────────────────────────────────────────────────────────
+strangersSeeNothingAndCannotAdmitThemselves : Script ()
+strangersSeeNothingAndCannotAdmitThemselves = script do
+  r <- rig
+
+  cFund <- query @Fund r.carol
+  cBounds <- query @MandateBounds r.carol
+  length cFund === 0
+  length cBounds === 0
+
+  -- She cannot subscribe, because she cannot even see the contract to exercise it on.
+  submitMustFail r.carol do exerciseCmd r.fund RequestSubscription with investor = r.carol, settlementRef = "SUB-001"
+
+  -- Nor can she admit herself.
+  submitMustFail r.carol do exerciseCmd r.fund AdmitInvestor with newInvestor = r.carol
+
+  -- And the manager cannot admit her without the vault's standing signature on the Fund —
+  -- which is exactly what makes admission a decision the fund made, not one the manager took.
+  pure ()
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Admission is one submission, or it is a bug.
+-- ─────────────────────────────────────────────────────────────────────────────
+admissionIsAtomicAcrossBothContracts : Script ()
+admissionIsAtomicAcrossBothContracts = script do
+  r <- rig
+
+  -- BOTH choices in a single submission. If either fails, neither commits, and Carol is never
+  -- left holding a membership she cannot read the rules of.
+  --
+  -- Note the applicative `<*>` rather than a do block: Daml's Commands type is Applicative and
+  -- not a Monad, so the compiler will not let one command in a submission depend on another's
+  -- result. That is the property being relied on here, enforced by the type system rather than
+  -- by remembering to write it correctly.
+  _ <- submit r.manager $
+    (,) <$> exerciseCmd r.fund (AdmitInvestor with newInvestor = r.carol)
+        <*> exerciseCmd r.bounds (AdmitToBounds with newInvestor = r.carol)
+
+  cFund <- query @Fund r.carol
+  cBounds <- query @MandateBounds r.carol
+  length cFund === 1        -- she can see the fund...
+  length cBounds === 1      -- ...and the rules she is entitled to hold it to
+
+  -- Still not the mandate. Admission grants membership, never the strategy.
+  cMandate <- query @Mandate r.carol
+  length cMandate === 0
+
+  -- And now she can subscribe.
+  let [(fundCid, _)] = cFund
+  _ <- submit r.carol do exerciseCmd fundCid RequestSubscription with investor = r.carol, settlementRef = "SUB-002"
+
+  -- The existing investor is undisturbed by someone else joining.
+  aFund <- query @Fund r.alice
+  length aFund === 1
+  pure ()
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- The guards around admission.
+-- ─────────────────────────────────────────────────────────────────────────────
+admissionRefusesTheIncoherent : Script ()
+admissionRefusesTheIncoherent = script do
+  r <- rig
+
+  -- Admitting someone who is already in would duplicate them on the observer list.
+  submitMustFail r.manager do exerciseCmd r.fund AdmitInvestor with newInvestor = r.alice
+  submitMustFail r.manager do exerciseCmd r.bounds AdmitToBounds with newInvestor = r.alice
+
+  -- An investor cannot admit their friends.
+  submitMustFail r.alice do exerciseCmd r.fund AdmitInvestor with newInvestor = r.carol
+
+  -- The honest admission still works, so nothing above failed for an unrelated reason.
+  _ <- submit r.manager $
+    (,) <$> exerciseCmd r.fund (AdmitInvestor with newInvestor = r.carol)
+        <*> exerciseCmd r.bounds (AdmitToBounds with newInvestor = r.carol)
+  pure ()

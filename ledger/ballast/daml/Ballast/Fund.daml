@@ -72,6 +72,25 @@ template Fund
         asOf   <- getTime
         create NavRecord with manager, fundId, nav, asOf, investors
 
+    -- | Admit a new investor to the fund.
+    --
+    -- Without this the investor list is fixed at formation, which suits a fund with a known
+    -- investor base and rules out anyone walking up and subscribing. Admission is the
+    -- manager's commercial decision; the vault pre-authorised it by signing this contract.
+    --
+    -- NOTE THE HALF-ADMISSION HAZARD: the investor list exists on two contracts — this one and
+    -- MandateBounds. Someone admitted to the Fund but not the bounds would hold units while
+    -- being unable to see the rules they are entitled to hold the fund to, which is worse than
+    -- not being admitted at all. Both choices must go in ONE submission; `Ballast.Test.Admit`
+    -- proves the pair is atomic.
+    choice AdmitInvestor : ContractId Fund
+      with
+        newInvestor : Party
+      controller manager
+      do
+        assertMsg "already an investor in this fund" (newInvestor `notElem` investors)
+        create this with investors = newInvestor :: investors
+
     -- | An investor registers a subscription.
     --
     -- This lives on Fund rather than standing alone because of who needs to sign. Taking

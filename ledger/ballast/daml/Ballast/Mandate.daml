@@ -76,6 +76,20 @@ template MandateBounds
     signatory manager, vault
     observer investors
 
+    -- | Admit a new investor to the disclosed bounds.
+    --
+    -- The other half of Fund.AdmitInvestor, and it must travel with it. An investor admitted
+    -- to the fund but not to these bounds would hold units while being unable to read the
+    -- universe, band and cap they are entitled to hold the fund to — the exact opposite of
+    -- what this contract exists for.
+    choice AdmitToBounds : ContractId MandateBounds
+      with
+        newInvestor : Party
+      controller manager
+      do
+        assertMsg "already on these bounds" (newInvestor `notElem` investors)
+        create this with investors = newInvestor :: investors
+
 -- | The proof investors receive. Signed by manager AND vault, so it can only come from a
 -- transaction that carried vault authority — which, per the security model above, means a
 -- transaction that ran the validation below.
