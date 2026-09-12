@@ -2,7 +2,9 @@ import Link from "next/link";
 import DisclosureMatrix from "@/components/DisclosureMatrix";
 import LensExplorer from "@/components/LensExplorer";
 import Panel from "@/components/Panel";
+import RebalanceConsole from "@/components/RebalanceConsole";
 import StatusStrip from "@/components/StatusStrip";
+import { readFundState } from "@/lib/fund";
 import { readLenses, statusFrom, type Lens } from "@/lib/lenses";
 import s from "./page.module.css";
 
@@ -40,6 +42,13 @@ export default async function Terminal() {
     );
   }
 
+  let fundState = null;
+  try {
+    fundState = await readFundState();
+  } catch {
+    // The console renders its own empty state; the rest of the page is still worth showing.
+  }
+
   const status = statusFrom(lenses);
   const investor = lenses.find((l) => l.id === "investor");
 
@@ -47,20 +56,24 @@ export default async function Terminal() {
     <main className={s.main}>
       <div className="wrap">
         <div className={s.intro}>
-          <h1 className={s.h1}>One fund. Five people. Five different answers.</h1>
+          <h1 className={s.h1}>Try to cheat this fund. You can&rsquo;t.</h1>
           <p className={`prose ${s.introP}`}>
-            Below is a real index fund running on a Canton ledger. Everything on this screen was
-            read from it just now, by asking <b>each party separately</b> what they can see. The
-            grid is those answers side by side — it is not a mock-up, and nothing here is
-            filtered by this page.
+            This is a real index fund on a Canton ledger — not a mock-up. You are holding the
+            manager&rsquo;s keys. Below you can propose trades on its behalf, including dishonest
+            ones, and watch the ledger decide. Then look at what everyone else was able to see
+            while it happened.
           </p>
         </div>
 
         <StatusStrip status={status} ledger={ledger} />
 
+        <Panel code="01" title="Act — propose a trade as the manager" flush>
+          <RebalanceConsole initial={fundState} />
+        </Panel>
+
         <Panel
-          code="01"
-          title="Who can see what?"
+          code="02"
+          title="Observe — who could see any of that?"
           right={<><span className={s.live}>●</span> READ LIVE</>}
           flush
         >
@@ -80,7 +93,7 @@ export default async function Terminal() {
           </div>
         </Panel>
 
-        <Panel code="02" title="Look through one party's eyes" flush>
+        <Panel code="03" title="Inspect — look through one party's eyes" flush>
           <p className={`prose ${s.explain}`}>
             Pick someone. You are seeing exactly what the ledger hands them when they ask — no
             more, and nothing withheld by us.
@@ -88,7 +101,7 @@ export default async function Terminal() {
           <LensExplorer initial={lenses} />
         </Panel>
 
-        <Panel code="03" title="Don\u2019t take our word for it" flush>
+        <Panel code="04" title="Verify — don\u2019t take our word for it" flush>
           <div className={s.checks}>
             <div className={s.check}>
               <span className={s.checkK}>PACKAGE</span>
