@@ -46,27 +46,49 @@ export default async function Terminal() {
   return (
     <main className={s.main}>
       <div className="wrap">
+        <div className={s.intro}>
+          <h1 className={s.h1}>One fund. Five people. Five different answers.</h1>
+          <p className={`prose ${s.introP}`}>
+            Below is a real index fund running on a Canton ledger. Everything on this screen was
+            read from it just now, by asking <b>each party separately</b> what they can see. The
+            grid is those answers side by side — it is not a mock-up, and nothing here is
+            filtered by this page.
+          </p>
+        </div>
+
         <StatusStrip status={status} ledger={ledger} />
 
         <Panel
           code="01"
-          title="Disclosure matrix"
-          right={<><span className={s.live}>●</span> LIVE</>}
+          title="Who can see what?"
+          right={<><span className={s.live}>●</span> READ LIVE</>}
           flush
         >
           <DisclosureMatrix lenses={lenses} />
-          <p className={`prose ${s.note}`}>
-            One active-contract-set query per party, rendered unmodified. The <b>MANDATE</b> row
-            is the argument — filled for the two parties that run the fund, blank for the
-            investors whose money it is, and blank because the ledger does not return it rather
-            than because this page withholds it.
-            {investor && ` The investor sees ${investor.count} contracts; the strategy is not among them.`}
-          </p>
+          <div className={s.verdict}>
+            <span className={s.verdictK}>THE POINT</span>
+            <p className="prose">
+              Look at the first row. <b>The strategy is visible to the two parties that run the
+              fund and to nobody else</b> — not even to the investors whose money it is. Yet
+              those investors still see what the fund is worth, what they own, and the rules it
+              promised to stay inside.
+              {investor && ` This investor gets ${investor.count} of the ${
+                lenses.find((l) => l.id === "manager")?.count ?? 0
+              } things that exist.`}{" "}
+              That is the product: you can check the fund without being able to copy it.
+            </p>
+          </div>
         </Panel>
 
-        <LensExplorer initial={lenses} />
+        <Panel code="02" title="Look through one party's eyes" flush>
+          <p className={`prose ${s.explain}`}>
+            Pick someone. You are seeing exactly what the ledger hands them when they ask — no
+            more, and nothing withheld by us.
+          </p>
+          <LensExplorer initial={lenses} />
+        </Panel>
 
-        <Panel code="03" title="Check it yourself" flush>
+        <Panel code="03" title="Don\u2019t take our word for it" flush>
           <div className={s.checks}>
             <div className={s.check}>
               <span className={s.checkK}>PACKAGE</span>

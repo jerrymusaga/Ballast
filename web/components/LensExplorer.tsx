@@ -70,21 +70,24 @@ export default function LensExplorer({ initial }: { initial: Lens[] }) {
               <h3>{active.party ? "Sees nothing" : "Not on this ledger"}</h3>
               <p>
                 {active.party
-                  ? "Not a stakeholder on any contract in this fund, so the active-contract-set query comes back empty. Nothing is being hidden by this page — there is nothing to return."
+                  ? "This party has no relationship to the fund, so when the ledger is asked what they can see, it returns nothing at all. That is the answer, not a missing feature — and it is the same answer anyone outside the fund gets."
                   : "This party has not been allocated. Run provisioning against the ledger first."}
               </p>
             </div>
           ) : (
             <table className={s.table}>
               <thead>
-                <tr><th>CONTRACT</th><th>VALUE</th><th className={s.right}>DETAIL</th></tr>
+                <tr><th>WHAT THEY CAN SEE</th><th>VALUE</th><th className={s.right}>DETAIL</th></tr>
               </thead>
               <tbody>
                 {active.contracts.map((c, i) => (
                   <tr key={i} className={c.secret ? s.secretRow : undefined}>
                     <td className={s.kind}>
-                      {c.kind}
-                      {c.secret && <span className={s.tag}>private</span>}
+                      <span className={s.plain}>
+                        {c.plain}
+                        {c.secret && <span className={s.tag}>private</span>}
+                      </span>
+                      <span className={s.tech}>{c.kind}</span>
                     </td>
                     <td className={s.headline}>{c.headline}</td>
                     <td className={`${s.detail} ${s.right}`}>{c.detail}</td>
@@ -96,9 +99,10 @@ export default function LensExplorer({ initial }: { initial: Lens[] }) {
 
           {active.id === "investor" && (
             <p className={`prose ${s.verdict}`}>
-              The <b>Mandate</b> is missing from this table, and that is the product. The investor
-              holds units, receives the NAV and can prove every rebalance obeyed the strategy —
-              without the ledger ever returning the strategy itself.
+              <b>The strategy is not in this list.</b> This investor can see what the fund is
+              worth, how many units they hold, and the rules the fund promised to stay inside —
+              everything needed to hold it to account. What they cannot see is the one thing
+              that would let them, or anyone they told, trade ahead of it.
             </p>
           )}
         </Panel>

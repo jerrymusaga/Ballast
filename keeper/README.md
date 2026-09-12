@@ -85,3 +85,16 @@ guessing.
 
 The live price feed behind the oracle, and funding the vault with real assets — a fund that
 owns nothing is formed but not running.
+
+## Seeding a demo fund
+
+Formation creates a fund that owns nothing, which is correct and reads as broken — every
+number on the terminal is zero. `seed` issues demo assets, points the vault index at them,
+publishes a NAV and issues units, so the fund is actually a fund.
+
+    npm run seed -- --apply          # BEFORE provision:formation-done
+
+The ordering is not optional. Wiring assets into the vault needs the vault's signature, and
+`formation-done` revokes it — the same rule that stops the manager moving fund assets also
+stops it seeding them. On a network with real registries this step is replaced by acquiring
+real cBTC; nothing else changes, because the fund only ever sees `ContractId Holding`.

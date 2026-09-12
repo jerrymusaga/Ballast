@@ -16,3 +16,16 @@
 .more { padding: 11px 14px; border-top: 1px solid var(--line); }
 .moreLink { font-size: 10.5px; letter-spacing: 0.14em; color: var(--amber); }
 .moreLink:hover { text-decoration: underline; text-underline-offset: 3px; }
+
+.intro { padding: 22px 2px 6px; }
+.h1 { font-size: clamp(19px, 2.6vw, 26px); color: var(--ink); letter-spacing: 0.01em; }
+.introP { margin-top: 10px; max-width: 82ch; font-size: 14px; }
+
+.verdict {
+  display: grid; grid-template-columns: 90px 1fr; gap: 14px;
+  padding: 14px; border-top: 1px solid var(--amber-dim); background: var(--amber-wash);
+}
+.verdictK { font-size: 10px; letter-spacing: 0.15em; color: var(--amber); padding-top: 2px; }
+.verdict p { max-width: 92ch; font-size: 14px; }
+
+.explain { padding: 12px 14px; border-bottom: 1px solid var(--line); max-width: 84ch; }

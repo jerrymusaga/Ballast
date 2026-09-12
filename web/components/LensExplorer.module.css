@@ -30,17 +30,19 @@
   font-size: 9.5px; letter-spacing: 0.14em; color: var(--ink-4);
   padding: 7px 14px; border-bottom: 1px solid var(--line-2);
 }
-.table td { padding: 0 14px; height: var(--row); border-bottom: 1px solid var(--line); font-size: 12px; }
+.table td { padding: 9px 14px; border-bottom: 1px solid var(--line); font-size: 12px; vertical-align: top; }
 .table tbody tr:last-child td { border-bottom: none; }
 .table tbody tr:hover { background: var(--panel-2); }
 
 .right { text-align: right; }
-.kind { color: var(--cyan); white-space: nowrap; }
+.kind { white-space: nowrap; padding-top: 7px; padding-bottom: 7px; }
+.plain { display: block; color: var(--ink); font-size: 12.5px; }
+.tech { display: block; margin-top: 2px; font-size: 9.5px; color: var(--ink-4); letter-spacing: 0.06em; }
 .headline { color: var(--ink); }
 .detail { color: var(--ink-3); font-size: 11px; }
 
 .secretRow { background: var(--amber-wash); }
-.secretRow .kind { color: var(--amber); }
+.secretRow .plain { color: var(--amber); }
 .tag { margin-left: 8px; font-size: 9px; letter-spacing: 0.1em; color: var(--amber); border: 1px solid var(--amber-dim); padding: 0 4px; }
 
 .empty { padding: 46px 16px; text-align: center; }

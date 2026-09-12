@@ -10,10 +10,17 @@ import { connFromEnv, listParties } from "../../keeper/src/ledger.ts";
 import { activeContracts, type CreatedEvent } from "../../keeper/src/commands.ts";
 
 export interface LensContract {
+  /** The Daml template name. Kept so anything on screen can be checked against the code. */
   kind: string;
+  /** What it is, in words someone who has never read the code would use. */
+  plain: string;
+  /** One line on why it exists — the reason a reader should care that it is or is not here. */
+  what: string;
   headline: string;
   detail: string;
   secret?: boolean;
+  /** Sort weight: the contracts that carry the argument come first. */
+  rank: number;
 }
 
 export interface Lens {
@@ -41,26 +48,103 @@ export const LENSES = [
 
 const entity = (tid: string) => tid.split(":").slice(-1)[0] ?? tid;
 const num = (v: unknown) => (typeof v === "string" ? String(Number(v)) : String(v ?? ""));
-const when = (v: unknown) => String(v ?? "").slice(0, 16).replace("T", " ");
+const when = (v: unknown) => String(v ?? "").slice(0, 16).replace("T", " ") + " UTC";
+/** Money with separators — a bare 1080000 is harder to read than it looks. */
+const money = (v: unknown) => Number(v ?? 0).toLocaleString("en-US", { maximumFractionDigits: 2 });
+/** A drift band of 0.05 means five percent; showing the raw decimal makes readers do the work. */
+const pct = (v: unknown) => `${(Number(v ?? 0) * 100).toFixed(1)}%`;
 
 function describe(e: CreatedEvent): LensContract {
   const a = e.createArgument as Record<string, any>;
   const kind = entity(e.templateId);
+
+  // Every label here is written for someone who has never seen this codebase. The template
+  // name is kept alongside rather than replaced, so a reader can still tie any row back to
+  // the Daml — plain language for understanding, the real name for checking.
   switch (kind) {
-    case "Fund": return { kind, headline: a.fundId, detail: `${(a.investors ?? []).length} investors` };
-    case "Mandate": return { kind, headline: `version ${a.version}`, detail: `${(a.targets ?? []).length} target weights · band ${num(a.driftBand)}`, secret: true };
-    case "MandateBounds": return { kind, headline: `version ${a.version}`, detail: `band ${num(a.driftBand)} · cap ${num(a.maxWeight)} · ${(a.universe ?? []).length} instruments` };
-    case "NavRecord": return { kind, headline: num(a.nav), detail: when(a.asOf) };
-    case "Position": return { kind, headline: `${num(a.units)} units`, detail: a.fundId };
-    case "UnitLedger": return { kind, headline: `${num(a.totalUnits)} units`, detail: "in issue" };
-    case "VaultIndex": return { kind, headline: `${(a.holdings ?? []).length} holdings`, detail: `${(a.pending ?? []).length} reserved` };
-    case "ComplianceRecord": return { kind, headline: `mandate v${a.mandateVersion}`, detail: `NAV ${num(a.navBefore)} → ${num(a.navAfter)}` };
-    case "PriceSet": return { kind, headline: `${(a.prices ?? []).length} instruments`, detail: when(a.asOf) };
+    case "Mandate":
+      return {
+        kind, rank: 0, secret: true,
+        plain: "The strategy",
+        what: "The exact target weights the fund must hold. This is the contract nobody outside the fund can read.",
+        headline: `${(a.targets ?? []).length} target weights`,
+        detail: `version ${a.version}`,
+      };
+    case "MandateBounds":
+      return {
+        kind, rank: 1,
+        plain: "The rules investors can check",
+        what: "The limits the fund promised to stay inside — which assets, how far it may drift, how much it may hold of any one thing.",
+        headline: `drift ${pct(a.driftBand)} · cap ${pct(a.maxWeight)}`,
+        detail: `${(a.universe ?? []).length} instruments · version ${a.version}`,
+      };
+    case "VaultIndex":
+      return {
+        kind, rank: 2,
+        plain: "What the fund owns",
+        what: "The full list of the fund's assets. Knowing this is knowing the portfolio, so it stays with the fund.",
+        headline: `${(a.holdings ?? []).length} holdings`,
+        detail: `${(a.pending ?? []).length} reserved for settlement`,
+      };
+    case "NavRecord":
+      return {
+        kind, rank: 3,
+        plain: "What the fund is worth",
+        what: "The total value, computed by the ledger from holdings the reader cannot see.",
+        headline: money(a.nav),
+        detail: when(a.asOf),
+      };
+    case "Position":
+      return {
+        kind, rank: 4,
+        plain: "Units held",
+        what: "One investor's stake. Each investor sees only their own — they are invisible to each other.",
+        headline: `${num(a.units)} units`,
+        detail: a.fundId,
+      };
+    case "Fund":
+      return {
+        kind, rank: 5,
+        plain: "The fund itself",
+        what: "Who runs it, who is invested, and which assets it accepts.",
+        headline: a.fundId,
+        detail: `${(a.investors ?? []).length} investors`,
+      };
+    case "UnitLedger":
+      return {
+        kind, rank: 6,
+        plain: "Units in issue",
+        what: "How many units exist in total. Value per unit is the fund's worth divided by this.",
+        headline: `${num(a.totalUnits)} units`,
+        detail: "total outstanding",
+      };
+    case "PriceSet":
+      return {
+        kind, rank: 7,
+        plain: "Prices used",
+        what: "Signed by an independent source, so the manager cannot mark its own book.",
+        headline: `${(a.prices ?? []).length} instruments`,
+        detail: when(a.asOf),
+      };
+    case "ComplianceRecord":
+      return {
+        kind, rank: 8,
+        plain: "Proof a rebalance obeyed the rules",
+        what: "Names the strategy version it satisfied — and no weight, instrument or counterparty.",
+        headline: `mandate v${a.mandateVersion}`,
+        detail: `${money(a.navBefore)} → ${money(a.navAfter)}`,
+      };
     default:
       if (a.instrumentId && a.amount !== undefined) {
-        return { kind: "Holding", headline: `${num(a.amount)} ${a.instrumentId.id}`, detail: "CIP-56 registry asset" };
+        return {
+          kind: "Holding", rank: 9,
+          plain: `${a.instrumentId.id} held`,
+          what: "A real registry-issued asset. The fund holds it; it does not mint its own.",
+          headline: `${num(a.amount)} ${a.instrumentId.id}`,
+          detail: "CIP-56 registry asset",
+        };
       }
-      return { kind, headline: kind, detail: "" };
+      return { kind, rank: 10, plain: kind, what: "", headline: kind, detail: "" };
   }
 }
 
@@ -80,7 +164,7 @@ export async function readLenses(): Promise<{ ledger: string; version: string | 
     lenses.push({
       id: l.id, label: l.label, role: l.role, blurb: l.blurb, party,
       count: seen.length,
-      contracts: seen.map(describe).sort((a, b) => a.kind.localeCompare(b.kind)),
+      contracts: seen.map(describe).sort((a, b) => a.rank - b.rank || a.headline.localeCompare(b.headline)),
     });
   }
   return { ledger: c.baseUrl, version, lenses };

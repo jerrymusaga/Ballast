@@ -14,6 +14,7 @@
     "provision:formation-done": "node --env-file=.env --experimental-strip-types src/provision.ts --apply --formation-done",
     "inspect": "node --env-file=.env --experimental-strip-types src/inspect.ts",
     "formation": "node --env-file=.env --experimental-strip-types src/formation.ts",
-    "login": "node --env-file=.env --experimental-strip-types src/login.ts"
+    "login": "node --env-file=.env --experimental-strip-types src/login.ts",
+    "seed": "node --env-file=.env --experimental-strip-types src/seed.ts"
   }
 }
